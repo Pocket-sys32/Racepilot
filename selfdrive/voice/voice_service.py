@@ -75,11 +75,20 @@ if _AIORTC_OK:
       self.active = False
 
     def feed(self, pcm_int16_bytes: bytes) -> None:
-      """Resample 16 kHz → 48 kHz, enqueue.  Called in async context."""
+      """16 kHz int16 bytes → resample to 48 kHz and enqueue (rawAudioData fallback)."""
       if not self.active:
         return
       pcm = np.frombuffer(pcm_int16_bytes, dtype=np.int16).astype(np.float32) / 32768.0
-      pcm48 = np.repeat(pcm, _OUT_RATE // _MIC_RATE)  # 3× upsample
+      pcm48 = np.repeat(pcm, _OUT_RATE // _MIC_RATE)  # 3× upsample (low-quality fallback)
+      self._enqueue(pcm48)
+
+    def feed_native(self, pcm_f32: np.ndarray) -> None:
+      """48 kHz float32 samples directly — no resampling needed."""
+      if not self.active:
+        return
+      self._enqueue(pcm_f32)
+
+    def _enqueue(self, pcm48: np.ndarray) -> None:
       try:
         self._q.put_nowait(pcm48)
       except asyncio.QueueFull:
@@ -299,6 +308,7 @@ class VoiceService:
         while True:
           frame = await track.recv()
           pcm = frame.to_ndarray().flatten().astype(np.float32) / 32768.0
+          pcm = np.clip(pcm * 4.0, -1.0, 1.0)  # 4× gain — mic input is quiet
           if self._out_ok:
             self._out_buf.extend(pcm.tolist())
       except Exception:
@@ -338,17 +348,16 @@ class VoiceService:
       mic_q: _queue.SimpleQueue[bytes] = _queue.SimpleQueue()
       in_stream = None
 
-      # Try direct sounddevice InputStream (works offroad — micd not required)
+      # Try direct sounddevice InputStream at 48 kHz (same as output — no resampling)
       try:
         import sounddevice as _sd  # noqa: PLC0415
 
         def _mic_cb(indata: np.ndarray, frames: int, _t, _s) -> None:
-          pcm_bytes = (indata.flatten() * 32768.0).clip(-32768, 32767).astype(np.int16).tobytes()
-          mic_q.put(pcm_bytes)
+          mic_q.put(indata.flatten().copy())  # float32 48 kHz samples
 
         in_stream = _sd.InputStream(
-          samplerate=_MIC_RATE, channels=1, dtype="float32",
-          callback=_mic_cb, blocksize=320,
+          samplerate=_OUT_RATE, channels=1, dtype="float32",
+          callback=_mic_cb, blocksize=_FRAME_OUT,  # 960 samples = 20 ms at 48 kHz
         )
         in_stream.start()
         cloudlog.info(f"voice: mic input stream opened (device={in_stream.device})")
@@ -360,14 +369,14 @@ class VoiceService:
         while True:
           await asyncio.sleep(0.02)
           while not mic_q.empty():
-            raw = mic_q.get_nowait()
+            raw = mic_q.get_nowait()  # float32 48 kHz ndarray
             with self._lock:
               mic_on = not self._mic_muted
             for _, mic in peers.values():
               mic.active = mic_on
             if mic_on:
               for _, mic in peers.values():
-                mic.feed(raw)
+                mic.feed_native(raw)
           with self._lock:
             mic_on = not self._mic_muted
           if peers:
