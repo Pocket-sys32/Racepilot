@@ -34,7 +34,7 @@ try:
   import av
   from aiortc import (
     RTCPeerConnection, RTCSessionDescription,
-    RTCIceServer, RTCConfiguration, AudioStreamTrack,
+    RTCIceServer, RTCConfiguration, AudioStreamTrack, RTCRtpSender,
   )
   _AIORTC_OK = True
 except Exception:
@@ -217,13 +217,12 @@ class VoiceService:
         self._out_ok = True
         cloudlog.info(f"voice: output stream opened (device={self._out_stream.device})")
         # ALSA 'Playback 0 Volume' resets to 0 on boot unless soundd (car-only) runs.
-        # Use 50% (4096/8192) — max causes distortion at the speaker stage.
         try:
           subprocess.run(
-            ["amixer", "-c", "0", "cset", "name=Playback 0 Volume", "4096"],
+            ["amixer", "-c", "0", "cset", "name=Playback 0 Volume", "8192"],
             capture_output=True, timeout=3,
           )
-          cloudlog.info("voice: set ALSA Playback 0 Volume to 4096 (50%)")
+          cloudlog.info("voice: set ALSA Playback 0 Volume to 8192 (max)")
         except Exception as ve:
           cloudlog.warning(f"voice: amixer volume set failed: {ve}")
         return
@@ -325,6 +324,10 @@ class VoiceService:
         while True:
           frame = await track.recv()
           pcm = frame.to_ndarray().flatten().astype(np.float32) / 32768.0
+          # Upsample to output rate if codec decoded at a different rate (e.g. PCMU = 8kHz)
+          sr = getattr(frame, "sample_rate", _OUT_RATE)
+          if sr and sr != _OUT_RATE:
+            pcm = np.repeat(pcm, _OUT_RATE // sr)
           if self._out_ok:
             self._out_buf.extend(pcm.tolist())
       except Exception:
@@ -334,7 +337,15 @@ class VoiceService:
       cfg = RTCConfiguration([RTCIceServer(urls=_ICE_URLS)])
       pc  = RTCPeerConnection(configuration=cfg)
       mic = _MicTrack()
-      pc.addTrack(mic)
+
+      # Prefer PCMU (G.711) — no perceptual compression, phone-call clarity.
+      # Falls back to Opus automatically if peer doesn't support PCMU.
+      transceiver = pc.addTransceiver(mic, direction="sendrecv")
+      caps = RTCRtpSender.getCapabilities("audio")
+      pcmu = [c for c in caps.codecs if c.mimeType == "audio/PCMU"]
+      if pcmu:
+        transceiver.setCodecPreferences(pcmu)
+        cloudlog.info("voice: using PCMU (G.711) codec")
 
       @pc.on("track")
       def on_track(t):
