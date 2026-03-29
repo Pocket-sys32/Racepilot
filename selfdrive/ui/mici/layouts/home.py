@@ -12,6 +12,7 @@ from openpilot.system.ui.widgets.icon_widget import IconWidget
 from openpilot.system.ui.widgets.label import UnifiedLabel
 from openpilot.system.ui.lib.application import gui_app, FontWeight, MousePos
 from openpilot.selfdrive.ui.ui_state import ui_state
+from openpilot.system.hardware import PC
 from openpilot.system.hardware.hw import Paths
 from openpilot.system.version import RELEASE_BRANCHES
 
@@ -99,7 +100,7 @@ class TrackIconWidget(Widget):
     now = time.monotonic()
     if now - self._last_check > 10.0:
       self._last_check = now
-      track_dir = Path("/data/media/0/track_mode")
+      track_dir = (Path(Paths.comma_home()) / "media" / "0" if PC else Path("/data/media/0")) / "track_mode"
       self._has_data = track_dir.exists() and any(track_dir.glob("*.json"))
 
   def _render(self, _) -> None:

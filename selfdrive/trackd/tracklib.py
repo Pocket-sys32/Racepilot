@@ -10,6 +10,7 @@ from typing import Any
 import numpy as np
 
 from opendbc.car.interfaces import ACCEL_MIN
+from openpilot.system.hardware import PC
 from openpilot.system.hardware.hw import Paths
 
 
@@ -183,7 +184,7 @@ class TrackModeConfig:
 
   @property
   def storage_path(self) -> Path:
-    root = Path("/data/media/0/track_mode")
+    root = (Path(Paths.comma_home()) / "media" / "0" if PC else Path("/data/media/0")) / "track_mode"
     root.mkdir(parents=True, exist_ok=True)
     return root / f"{_safe_track_name(self.track_name)}.json"
 

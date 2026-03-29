@@ -20,6 +20,7 @@ from pathlib import Path
 
 import cereal.messaging as messaging
 from openpilot.common.swaglog import cloudlog
+from openpilot.system.hardware import PC
 from openpilot.system.hardware.hw import Paths
 
 MS_TO_MPH = 2.23694
@@ -155,7 +156,8 @@ class DragService:
     self._samples: list = []   # (t, v_fused, a_can, distance)
     self._gps_correction: float = 1.0
 
-    self._persist_dir = Path("/data/media/0/drag_runs")
+    _media_root = Path(Paths.comma_home()) / "media" / "0" if PC else Path("/data/media/0")
+    self._persist_dir = _media_root / "drag_runs"
     self._persist_dir.mkdir(parents=True, exist_ok=True)
     self._load_runs()
 

@@ -5,6 +5,7 @@ import numpy as np
 import pyray as rl
 
 from openpilot.selfdrive.ui.ui_state import ui_state
+from openpilot.system.hardware import PC
 from openpilot.system.hardware.hw import Paths
 from openpilot.system.ui.lib.application import FontWeight, gui_app
 from openpilot.system.ui.lib.text_measure import measure_text_cached
@@ -52,7 +53,7 @@ class TrackMapLayout(NavWidget):
     self._load()
 
   def _load(self):
-    track_dir = Path("/data/media/0/track_mode")
+    track_dir = (Path(Paths.comma_home()) / "media" / "0" if PC else Path("/data/media/0")) / "track_mode"
     if not track_dir.exists():
       self._reference = None
       self._error = "No track data saved yet.\nComplete a lap with track mode active."
