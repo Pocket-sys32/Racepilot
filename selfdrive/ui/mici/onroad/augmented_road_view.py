@@ -130,6 +130,9 @@ class BookmarkIcon(Widget):
 
 
 class AugmentedRoadView(CameraView):
+  def set_drag_callback(self, callback) -> None:
+    self._hud_renderer.set_drag_callback(callback)
+
   def __init__(self, bookmark_callback=None, stream_type: VisionStreamType = VisionStreamType.VISION_STREAM_ROAD):
     super().__init__("camerad", stream_type)
     self._bookmark_callback = bookmark_callback

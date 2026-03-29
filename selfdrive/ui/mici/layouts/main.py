@@ -3,6 +3,10 @@ import cereal.messaging as messaging
 from openpilot.selfdrive.ui.mici.layouts.home import MiciHomeLayout
 from openpilot.selfdrive.ui.mici.layouts.settings.settings import SettingsLayout
 from openpilot.selfdrive.ui.mici.layouts.settings.games import GamesLayoutMici
+from openpilot.selfdrive.ui.mici.layouts.track_map import TrackMapLayout
+from openpilot.selfdrive.ui.mici.layouts.drag_run import DragRunLayout
+from openpilot.selfdrive.dragy.drag_service import DragService
+from openpilot.selfdrive.voice.voice_service import VoiceService
 from openpilot.selfdrive.ui.mici.layouts.offroad_alerts import MiciOffroadAlerts
 from openpilot.selfdrive.ui.mici.onroad.augmented_road_view import AugmentedRoadView
 from openpilot.selfdrive.ui.ui_state import device, ui_state
@@ -31,6 +35,10 @@ class MiciMainLayout(Scroller):
     self._alerts_layout = MiciOffroadAlerts()
     self._settings_layout = SettingsLayout()
     self._games_layout = GamesLayoutMici()
+    self._track_map_layout = TrackMapLayout()
+    self._drag_run_layout = DragRunLayout()
+    DragService.get()   # start background service
+    VoiceService.get()  # start voice chat service
     self._onroad_layout = AugmentedRoadView(bookmark_callback=self._on_bookmark_clicked)
 
     # Initialize widget rects
@@ -63,8 +71,12 @@ class MiciMainLayout(Scroller):
     self._home_layout.set_callbacks(
       on_settings=lambda: gui_app.push_widget(self._settings_layout),
       on_games=lambda: gui_app.push_widget(self._games_layout),
+      on_track=lambda: gui_app.push_widget(self._track_map_layout),
+      on_voice=lambda: VoiceService.get().toggle_mic_mute(),
+      on_mute=lambda: VoiceService.get().toggle_speaker_mute(),
     )
     self._onroad_layout.set_click_callback(lambda: self._scroll_to(self._home_layout))
+    self._onroad_layout.set_drag_callback(lambda: gui_app.push_widget(self._drag_run_layout))
     device.add_interactive_timeout_callback(self._on_interactive_timeout)
 
   def _scroll_to(self, layout: Widget):

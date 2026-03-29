@@ -24,6 +24,10 @@ def main() -> None:
   config = TrackModeConfig.from_bytes(params.get("TrackModeConfig"))
   cloudlog.info("trackd got CarParams: %s", CP.carFingerprint)
 
+  import os as _os
+  RESET_FLAG = "/tmp/track_mode_reset"
+  _os.unlink(RESET_FLAG) if _os.path.exists(RESET_FLAG) else None
+
   pose_calibrator = PoseCalibrator()
   session = TrackSession(config)
 
@@ -32,10 +36,16 @@ def main() -> None:
     poll='modelV2',
   )
   pm = messaging.PubMaster(['longitudinalPlan', 'lateralManeuverPlan', 'driverAssistance', 'trackPlan', 'trackState'])
-  track_allowed = True
 
   while True:
     sm.update()
+
+    track_allowed = params.get_bool("TrackMode")
+
+    if _os.path.exists(RESET_FLAG):
+      _os.unlink(RESET_FLAG)
+      session.reset_runtime()
+      cloudlog.info("trackd: session reset by user")
 
     if sm.updated['liveCalibration']:
       pose_calibrator.feed_live_calib(sm['liveCalibration'])

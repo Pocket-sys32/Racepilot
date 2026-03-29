@@ -1,5 +1,7 @@
 import datetime
+import math
 import time
+from pathlib import Path
 
 from cereal import log
 import pyray as rl
@@ -10,6 +12,7 @@ from openpilot.system.ui.widgets.icon_widget import IconWidget
 from openpilot.system.ui.widgets.label import UnifiedLabel
 from openpilot.system.ui.lib.application import gui_app, FontWeight, MousePos
 from openpilot.selfdrive.ui.ui_state import ui_state
+from openpilot.system.hardware.hw import Paths
 from openpilot.system.version import RELEASE_BRANCHES
 
 HEAD_BUTTON_FONT_SIZE = 40
@@ -80,11 +83,181 @@ class NetworkIcon(Widget):
     rl.draw_texture_ex(draw_net_txt, rl.Vector2(draw_x, draw_y), 0.0, 1.0, rl.Color(255, 255, 255, int(255 * 0.9)))
 
 
+class TrackIconWidget(Widget):
+  """Draws a mini track oval icon. Glows cyan if learned data exists."""
+
+  SIZE = 48
+
+  def __init__(self):
+    super().__init__()
+    self.set_rect(rl.Rectangle(0, 0, self.SIZE, self.SIZE))
+    self._has_data = False
+    self._last_check = -999.0
+
+  def _update_state(self):
+    # Check for saved track data every 10 seconds
+    now = time.monotonic()
+    if now - self._last_check > 10.0:
+      self._last_check = now
+      track_dir = Path(Paths.persist_root()) / "track_mode"
+      self._has_data = track_dir.exists() and any(track_dir.glob("*.json"))
+
+  def _render(self, _) -> None:
+    cx = self._rect.x + self._rect.width / 2
+    cy = self._rect.y + self._rect.height / 2
+    rw = int(self._rect.width * 0.46)
+    rh = int(self._rect.height * 0.30)
+
+    col = rl.Color(0, 255, 255, 220) if self._has_data else rl.Color(180, 180, 180, 160)
+    thick = 3 if self._has_data else 2
+
+    # Outer oval
+    rl.draw_ellipse_lines(int(cx), int(cy), rw, rh, col)
+
+    # Inner oval (narrower track)
+    rl.draw_ellipse_lines(int(cx), int(cy), max(rw - 7, 4), max(rh - 6, 2),
+                          rl.Color(col.r, col.g, col.b, 100))
+
+    # Start/finish line tick
+    tick_x = int(cx + rw)
+    rl.draw_line(tick_x, int(cy - rh), tick_x, int(cy + rh), col)
+
+    # Dot — glows when data present
+    if self._has_data:
+      rl.draw_circle(int(cx + rw - 4), int(cy), 5, rl.Color(0, 255, 255, 255))
+
+
+class VoiceIconWidget(Widget):
+  """Microphone icon. Shows PTT state and peer connection status."""
+  SIZE = 42
+
+  def __init__(self) -> None:
+    super().__init__()
+    self.set_rect(rl.Rectangle(0, 0, self.SIZE, self.SIZE))
+    self._pulse_t: float = 0.0
+
+  def _render(self, _) -> None:
+    from openpilot.selfdrive.voice.voice_service import VoiceService, VoiceState
+    svc       = VoiceService.get()
+    state     = svc.state
+    mic_muted = svc.mic_muted
+    t         = rl.get_time()
+
+    cx  = int(self._rect.x + self._rect.width / 2)
+    cy  = int(self._rect.y + self._rect.height / 2)
+    bw  = int(self.SIZE * 0.30)   # capsule half-width
+    bh  = int(self.SIZE * 0.38)   # capsule half-height
+    br  = bw                      # corner radius = half-width → full pill
+
+    # Pick colour
+    if mic_muted:
+      col  = rl.Color(220, 60, 60, 200)
+      fill = False
+    elif state == VoiceState.OFFLINE:
+      col   = rl.Color(120, 120, 120, 100)
+      fill  = False
+    elif state == VoiceState.CONNECTING:
+      alpha = int(140 + 80 * abs(math.sin(t * 2.5)))
+      col   = rl.Color(220, 220, 220, alpha)
+      fill  = False
+    elif state == VoiceState.TALKING:
+      col  = rl.Color(60, 220, 80, 240)
+      fill = True
+    elif state == VoiceState.PEER_TALKING:
+      alpha = int(180 + 60 * abs(math.sin(t * 4.0)))
+      col   = rl.Color(0, 220, 255, alpha)
+      fill  = False
+      # expanding ring
+      ring_r = int(self.SIZE * 0.42 + 8 * abs(math.sin(t * 4.0)))
+      rl.draw_circle_lines(cx, cy, ring_r, rl.Color(0, 220, 255, 80))
+    else:
+      col   = rl.Color(0, 200, 80, 180)
+      fill  = False
+
+    # Mic capsule body
+    cap_rect = rl.Rectangle(cx - bw, cy - bh, bw * 2, bh * 2)
+    if fill:
+      rl.draw_rectangle_rounded(cap_rect, 1.0, 8, col)
+    else:
+      rl.draw_rectangle_rounded_lines(cap_rect, 1.0, 8, col)
+
+    # Mic stand arc + base
+    base_y = cy + bh + 2
+    rl.draw_line(cx, base_y, cx, base_y + 5, col)
+    rl.draw_line(cx - bw, base_y + 5, cx + bw, base_y + 5, col)
+    # Stand arc (half circle below capsule)
+    rl.draw_ring_lines(rl.Vector2(float(cx), float(cy + bh + 2)), float(bw), float(bw + 3), 180.0, 360.0, 12, col)
+
+    # Red slash when mic muted
+    if mic_muted:
+      sl = int(self.SIZE * 0.38)
+      rl.draw_line_ex(
+        rl.Vector2(float(cx - sl // 2), float(cy - sl // 2)),
+        rl.Vector2(float(cx + sl // 2), float(cy + sl // 2)),
+        2.5, rl.Color(220, 60, 60, 240),
+      )
+
+
+class MuteIconWidget(Widget):
+  """Speaker icon. Tap to toggle speaker mute (echo prevention for demos)."""
+  SIZE = 42
+
+  def __init__(self) -> None:
+    super().__init__()
+    self.set_rect(rl.Rectangle(0, 0, self.SIZE, self.SIZE))
+
+  def _render(self, _) -> None:
+    from openpilot.selfdrive.voice.voice_service import VoiceService
+    muted = VoiceService.get().speaker_muted
+
+    cx  = int(self._rect.x + self._rect.width / 2)
+    cy  = int(self._rect.y + self._rect.height / 2)
+    col = rl.Color(220, 60, 60, 220) if muted else rl.Color(140, 140, 140, 180)
+
+    # Classic speaker icon: box + trapezoid cone + wave arcs
+    # Layout (left → right): [box][cone][waves]
+    box_x = cx - 17
+    box_w = 7
+    box_h = 11
+    box_y = cy - box_h // 2
+
+    # Box (speaker enclosure)
+    rl.draw_rectangle(box_x, box_y, box_w, box_h, col)
+
+    # Cone — trapezoid widening to the right, drawn as two triangles
+    cx0 = box_x + box_w          # inner x (narrow end)
+    cx1 = box_x + box_w + 10     # outer x (wide end)
+    inner_h = box_h // 2         # half-height at narrow end
+    outer_h = box_h              # half-height at wide end
+
+    p_tl = rl.Vector2(float(cx0), float(cy - inner_h))
+    p_bl = rl.Vector2(float(cx0), float(cy + inner_h))
+    p_tr = rl.Vector2(float(cx1), float(cy - outer_h))
+    p_br = rl.Vector2(float(cx1), float(cy + outer_h))
+
+    rl.draw_triangle(p_tl, p_bl, p_br, col)
+    rl.draw_triangle(p_tl, p_br, p_tr, col)
+
+    # Sound waves (arcs) or mute slash
+    wave_cx = float(cx1 + 1)
+    if muted:
+      sl = 15
+      rl.draw_line_ex(
+        rl.Vector2(float(cx - sl // 2 + 4), float(cy - sl // 2)),
+        rl.Vector2(float(cx + sl // 2 + 4), float(cy + sl // 2)),
+        2.5, rl.Color(220, 60, 60, 255),
+      )
+    else:
+      rl.draw_ring_lines(rl.Vector2(wave_cx, float(cy)), 5.0, 7.0, -50.0, 50.0, 8, col)
+      rl.draw_ring_lines(rl.Vector2(wave_cx, float(cy)), 10.0, 12.0, -50.0, 50.0, 8, col)
+
+
 class MiciHomeLayout(Widget):
   def __init__(self):
     super().__init__()
     self._on_settings_click: Callable | None = None
     self._on_games_click: Callable | None = None
+    self._on_track_click: Callable | None = None
 
     self._last_refresh = 0
     self._mouse_down_t: None | float = None
@@ -94,9 +267,15 @@ class MiciHomeLayout(Widget):
     self._version_text = None
     self._experimental_mode = False
 
+    self._on_voice_click: Callable | None = None
+    self._on_mute_click: Callable | None = None
+
     self._experimental_icon = IconWidget("icons_mici/experimental_mode.png", (48, 48))
     self._mic_icon = IconWidget("icons_mici/microphone.png", (32, 46))
     self._games_icon = IconWidget("icons_mici/settings/games.png", (48, 48), opacity=0.9)
+    self._track_icon = TrackIconWidget()
+    self._voice_icon = VoiceIconWidget()
+    self._mute_icon  = MuteIconWidget()
 
     self._status_bar_layout = HBoxLayout([
       IconWidget("icons_mici/settings.png", (48, 48), opacity=0.9),
@@ -104,6 +283,9 @@ class MiciHomeLayout(Widget):
       self._experimental_icon,
       self._mic_icon,
       self._games_icon,
+      self._track_icon,
+      self._voice_icon,
+      self._mute_icon,
     ], spacing=18)
 
     self._race_label = UnifiedLabel("race", font_size=72, font_weight=FontWeight.DISPLAY, max_width=480, wrap_text=False,
@@ -147,16 +329,28 @@ class MiciHomeLayout(Widget):
       self._last_refresh = rl.get_time()
       self._update_params()
 
-  def set_callbacks(self, on_settings: Callable | None = None, on_games: Callable | None = None):
+  def set_callbacks(self, on_settings: Callable | None = None, on_games: Callable | None = None,
+                    on_track: Callable | None = None, on_voice: Callable | None = None,
+                    on_mute: Callable | None = None):
     self._on_settings_click = on_settings
-    self._on_games_click = on_games
+    self._on_games_click    = on_games
+    self._on_track_click    = on_track
+    self._on_voice_click    = on_voice
+    self._on_mute_click     = on_mute
 
   def _handle_mouse_release(self, mouse_pos: MousePos):
     if not self._did_long_press:
-      icon_rect = self._games_icon.rect
-      if (self._on_games_click and
-          icon_rect.x <= mouse_pos.x <= icon_rect.x + icon_rect.width and
-          icon_rect.y <= mouse_pos.y <= icon_rect.y + icon_rect.height):
+      def _in_icon(icon):
+        r = icon.rect
+        return r.x <= mouse_pos.x <= r.x + r.width and r.y <= mouse_pos.y <= r.y + r.height
+
+      if self._on_mute_click and _in_icon(self._mute_icon):
+        self._on_mute_click()
+      elif self._on_voice_click and _in_icon(self._voice_icon):
+        self._on_voice_click()
+      elif self._on_track_click and _in_icon(self._track_icon):
+        self._on_track_click()
+      elif self._on_games_click and _in_icon(self._games_icon):
         self._on_games_click()
       elif self._on_settings_click:
         self._on_settings_click()

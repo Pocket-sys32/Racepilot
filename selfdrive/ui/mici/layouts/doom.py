@@ -8,7 +8,7 @@ import pyray as rl
 
 from openpilot.system.ui.lib.application import FontWeight, MouseEvent, MousePos, gui_app
 from openpilot.system.ui.lib.text_measure import measure_text_cached
-from openpilot.system.ui.widgets.nav_widget import NavWidget
+from openpilot.selfdrive.games.safety_guard import GameSafetyGuard
 
 try:
   from inputs import UnpluggedError, get_gamepad
@@ -141,7 +141,7 @@ class DoomJoystick:
         self.turn = -self._axes_values[self._turn_axis]
 
 
-class DoomLayout(NavWidget):
+class DoomLayout(GameSafetyGuard):
   def __init__(self):
     super().__init__()
     self._font = gui_app.font(FontWeight.BOLD)
