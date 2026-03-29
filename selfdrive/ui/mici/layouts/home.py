@@ -375,9 +375,9 @@ class MiciHomeLayout(Widget):
 
     return version, branch, commit[:7], date_str
 
-  def _draw_checkered_flag(self, x: float, y: float, w: float) -> None:
-    sq = 10
-    rows = 2
+  def _draw_checkered_flag(self, x: float, y: float, w: float, h: float = 20) -> None:
+    sq = int(h / round(h / 10))  # square size that divides h evenly, close to 10
+    rows = max(1, round(h / sq))
     cols = int(w / sq) + 1
     for row in range(rows):
       for col in range(cols):
@@ -396,12 +396,14 @@ class MiciHomeLayout(Widget):
     self._race_label.render()
 
     pilot_x = text_pos.x + self._race_label.text_width
-    underline_y = text_pos.y + self._race_label.font_size + 4
-    underline_w = self._comma_label.text_width
-    self._draw_checkered_flag(pilot_x, underline_y, underline_w)
-
     self._comma_label.set_position(pilot_x, text_pos.y)
     self._comma_label.render()
+
+    flag_x = pilot_x + self._comma_label.text_width + 8
+    flag_w = self.rect.x + self.rect.width - flag_x
+    flag_h = self._race_label.font_size
+    if flag_w > 0:
+      self._draw_checkered_flag(flag_x, text_pos.y, flag_w, flag_h)
 
     if self._version_text is not None:
       # release branch
