@@ -44,6 +44,11 @@ class SupabaseREST:
       return resp.json()
     return []
 
+  def delete(self, table: str, match: dict) -> bool:
+    query_params = {f"{k}": f"eq.{v}" for k, v in match.items()}
+    resp = requests.delete(f"{self._base}/{table}", headers=self._headers, params=query_params, timeout=10)
+    return resp.status_code in (200, 204)
+
   def update(self, table: str, match: dict, data: dict) -> dict | None:
     query_params = {f"{k}": f"eq.{v}" for k, v in match.items()}
     resp = requests.patch(

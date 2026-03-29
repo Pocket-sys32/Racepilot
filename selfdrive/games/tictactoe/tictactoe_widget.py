@@ -1,4 +1,5 @@
 import threading
+import time
 
 import pyray as rl
 
@@ -8,7 +9,8 @@ from openpilot.selfdrive.games.supabase_client import SupabaseREST, SupabaseReal
 from openpilot.selfdrive.games.tictactoe.board_renderer import BoardRenderer
 from openpilot.selfdrive.games.tictactoe.game_logic import Board
 from openpilot.system.ui.lib.application import gui_app, FontWeight, MousePos
-from openpilot.system.ui.widgets.button import Button, ButtonStyle
+
+_GAME_OVER_CLOSE_DELAY = 3.0  # seconds before auto-closing after win/draw/loss
 
 
 class TicTacToeWidget(GameSafetyGuard):
@@ -27,8 +29,7 @@ class TicTacToeWidget(GameSafetyGuard):
     self._lock = threading.Lock()
     self._pending_update: dict | None = None
 
-    self._rematch_btn = self._child(Button("New Game", click_callback=self._on_rematch, button_style=ButtonStyle.PRIMARY))
-    self._exit_btn = self._child(Button("Exit", click_callback=self._on_exit))
+    self._game_over_at: float | None = None
 
     # Set up Supabase client
     config = get_supabase_config()
@@ -57,27 +58,42 @@ class TicTacToeWidget(GameSafetyGuard):
     super()._update_state()
     with self._lock:
       if self._pending_update:
-        self._board = Board.from_string(self._pending_update.get("board", "---------"))
+        board_str = self._pending_update.get("board")
+        if board_str:
+          new_board = Board.from_string(board_str)
+          # Only accept if not a stale/lagging event: mark count must be >= current
+          new_marks = sum(c != '-' for c in new_board.cells)
+          cur_marks = sum(c != '-' for c in self._board.cells)
+          if new_marks >= cur_marks:
+            self._board = new_board
         self._current_turn = self._pending_update.get("current_turn", self._current_turn)
-        self._winner = self._pending_update.get("winner")
+        new_winner = self._pending_update.get("winner")
+        if new_winner and not self._winner:
+          self._winner = new_winner
+          self._game_over_at = time.monotonic()
+          if self._winner == self._my_mark:
+            params = Params()
+            wins = int(params.get("TicTacToeWins") or "0")
+            params.put("TicTacToeWins", str(wins + 1))
         self._pending_update = None
 
-        # Track wins
-        if self._winner == self._my_mark:
-          params = Params()
-          wins = int(params.get("TicTacToeWins") or "0")
-          params.put("TicTacToeWins", str(wins + 1))
+    # Auto-close after delay when game is over
+    if self._game_over_at is None and self._winner:
+      self._game_over_at = time.monotonic()
+    if self._game_over_at is not None and time.monotonic() - self._game_over_at >= _GAME_OVER_CLOSE_DELAY:
+      self._close_game()
 
   def _render(self, rect: rl.Rectangle):
     self._board_renderer.draw(rect, self._board, self._current_turn, self._my_mark, self._winner)
 
-    # Show game-over buttons
-    if self._winner:
-      btn_w = min(200, rect.width / 3)
-      btn_y = rect.y + rect.height - 80
-      mid = rect.x + rect.width / 2
-      self._exit_btn.render(rl.Rectangle(mid - btn_w - 10, btn_y, btn_w, 55))
-      self._rematch_btn.render(rl.Rectangle(mid + 10, btn_y, btn_w, 55))
+    # Show countdown overlay when game is over
+    if self._winner and self._game_over_at is not None:
+      elapsed = time.monotonic() - self._game_over_at
+      remaining = max(0, _GAME_OVER_CLOSE_DELAY - elapsed)
+      font = gui_app.font(FontWeight.MEDIUM)
+      msg = f"Closing in {remaining:.0f}s..."
+      rl.draw_text_ex(font, msg, rl.Vector2(rect.x + rect.width / 2 - 80, rect.y + rect.height - 50), 28, 0,
+                      rl.Color(180, 180, 180, 200))
 
   def _handle_mouse_release(self, mouse_pos: MousePos):
     super()._handle_mouse_release(mouse_pos)
@@ -92,8 +108,13 @@ class TicTacToeWidget(GameSafetyGuard):
       self._board.place(cell, self._my_mark)
       new_winner = self._board.check_winner()
       self._current_turn = self._board.next_turn(self._my_mark)
-      if new_winner:
+      if new_winner and not self._winner:
         self._winner = new_winner
+        self._game_over_at = time.monotonic()
+        if self._winner == self._my_mark:
+          params = Params()
+          wins = int(params.get("TicTacToeWins") or "0")
+          params.put("TicTacToeWins", str(wins + 1))
 
       # Send move to Supabase in background
       board_str = self._board.to_string()
@@ -114,9 +135,11 @@ class TicTacToeWidget(GameSafetyGuard):
       data["winner"] = winner
     self._rest.update("games", {"id": self._game_id}, data)
 
-  def _on_rematch(self):
-    self.dismiss()
-
-  def _on_exit(self):
-    # Pop both the game widget and the lobby widget
+  def _close_game(self):
+    """Delete the game row and dismiss."""
+    if self._listener:
+      self._listener.stop()
+      self._listener = None
+    if self._rest:
+      threading.Thread(target=self._rest.delete, args=("games", {"id": self._game_id}), daemon=True).start()
     self.dismiss()
