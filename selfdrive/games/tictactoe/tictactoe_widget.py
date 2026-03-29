@@ -31,6 +31,7 @@ class TicTacToeWidget(GameSafetyGuard):
 
     self._game_over_at: float | None = None
     self._safe_close = False  # True when closed by safety guard (no forfeit)
+    self._last_poll = 0.0
 
     # Set up Supabase client
     config = get_supabase_config()
@@ -91,6 +92,13 @@ class TicTacToeWidget(GameSafetyGuard):
             params.put("TicTacToeWins", str(wins + 1))
         self._pending_update = None
 
+    # REST poll fallback every 1.5s — ensures opponent moves are seen even if Realtime drops
+    now = time.monotonic()
+    if self._rest and not self._winner and now - self._last_poll >= 1.5:
+      self._last_poll = now
+      rest, game_id = self._rest, self._game_id
+      threading.Thread(target=self._poll_state, args=(rest, game_id), daemon=True).start()
+
     # Auto-close after delay when game is over
     if self._game_over_at is None and self._winner:
       self._game_over_at = time.monotonic()
@@ -137,6 +145,11 @@ class TicTacToeWidget(GameSafetyGuard):
         args=(board_str, self._current_turn, new_winner),
         daemon=True,
       ).start()
+
+  def _poll_state(self, rest: SupabaseREST, game_id: str) -> None:
+    rows = rest.select("games", {"id": f"eq.{game_id}"})
+    if rows:
+      self._on_remote_update(rows[0])
 
   def _send_move(self, board_str: str, next_turn: str, winner: str | None):
     if not self._rest:

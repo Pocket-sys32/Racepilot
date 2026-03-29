@@ -31,7 +31,6 @@ from openpilot.selfdrive.games.supabase_client import get_supabase_config
 
 try:
   import av
-  import sounddevice as sd
   from aiortc import (
     RTCPeerConnection, RTCSessionDescription,
     RTCIceServer, RTCConfiguration, AudioStreamTrack,
@@ -124,8 +123,8 @@ class VoiceService:
   def __init__(self) -> None:
     self._lock           = threading.Lock()
     self._state          = VoiceState.OFFLINE
-    self._mic_muted      = True    # True = mic OFF by default (tap mic icon to unmute)
-    self._speaker_muted  = False   # Speaker ON by default — hear peers without tapping
+    self._mic_muted      = False   # Open mic by default — tap icon to mute
+    self._speaker_muted  = False   # Speaker ON by default
     self._peer_count     = 0
 
     raw = Params().get("DongleId")
@@ -184,20 +183,32 @@ class VoiceService:
     if not _AIORTC_OK:
       cloudlog.warning("voice: aiortc unavailable — disabled")
       return
-    self._open_output()
+    # Import sounddevice after forking (same pattern as soundd/micd)
+    try:
+      import sounddevice as sd  # noqa: PLC0415
+      self._open_output(sd)
+    except Exception as e:
+      cloudlog.warning(f"voice: sounddevice unavailable: {e}")
     asyncio.run(self._async_main())
 
-  def _open_output(self) -> None:
-    try:
-      self._out_stream = sd.OutputStream(
-        samplerate=_OUT_RATE, channels=1, dtype="float32",
-        callback=self._out_cb, blocksize=_OUT_BLOCK,
-      )
-      self._out_stream.start()
-      self._out_ok = True
-      cloudlog.info("voice: output stream opened")
-    except Exception as e:
-      cloudlog.warning(f"voice: output stream failed: {e}")
+  def _open_output(self, sd) -> None:
+    for attempt in range(8):
+      try:
+        # Reinitialize PortAudio before opening (required on comma hardware)
+        sd._terminate()
+        sd._initialize()
+        self._out_stream = sd.OutputStream(
+          samplerate=_OUT_RATE, channels=1, dtype="float32",
+          callback=self._out_cb, blocksize=_OUT_BLOCK,
+        )
+        self._out_stream.start()
+        self._out_ok = True
+        cloudlog.info(f"voice: output stream opened (device={self._out_stream.device})")
+        return
+      except Exception as e:
+        cloudlog.warning(f"voice: output stream attempt {attempt + 1} failed: {e}")
+        time.sleep(3)
+    cloudlog.warning("voice: output stream could not be opened after retries")
 
   def _out_cb(self, out: np.ndarray, frames: int, _t, _s) -> None:
     with self._lock:
