@@ -148,7 +148,9 @@ class SupabaseRealtimeListener:
       return
     if data.get("event") == "postgres_changes":
       payload = data.get("payload", {})
-      if payload.get("type") == "UPDATE":
-        record = payload.get("record", {})
+      # Supabase Realtime v2: record is nested under payload["data"]
+      inner = payload.get("data", payload)
+      if inner.get("type") == "UPDATE":
+        record = inner.get("record", {})
         if record:
           self._on_change(record)
