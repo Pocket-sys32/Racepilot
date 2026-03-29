@@ -2,7 +2,7 @@ from openpilot.common.params import Params
 from openpilot.selfdrive.ui.widgets.ssh_key import ssh_key_item
 from openpilot.selfdrive.ui.ui_state import ui_state
 from openpilot.system.ui.widgets import Widget
-from openpilot.system.ui.widgets.list_view import toggle_item
+from openpilot.system.ui.widgets.list_view import toggle_item, button_item
 from openpilot.system.ui.widgets.scroller_tici import Scroller
 from openpilot.system.ui.widgets.confirm_dialog import ConfirmDialog
 from openpilot.system.ui.lib.application import gui_app
@@ -25,11 +25,6 @@ DESCRIPTIONS = {
     "Enable this to switch to openpilot longitudinal control. Enabling Experimental mode is recommended when enabling openpilot longitudinal control alpha. " +
     "Changing this setting will restart openpilot if the car is powered on."
   ),
-  'track_mode': tr_noop(
-    "<b>WARNING: Track mode is experimental and intended only for closed-course testing.</b><br><br>" +
-    "When enabled, openpilot will use the track planner to show and follow a predicted path. " +
-    "Changing this setting will restart openpilot if the car is powered on."
-  ),
 }
 
 
@@ -38,6 +33,19 @@ class DeveloperLayout(Widget):
     super().__init__()
     self._params = Params()
     self._is_release = self._params.get_bool("IsReleaseBranch")
+
+    self._doom_game = None
+    try:
+      from openpilot.doom.doom import DoomGame
+      self._doom_game = DoomGame()
+    except Exception:
+      pass
+
+    self._doom_btn = button_item(
+      lambda: tr("DOOM"),
+      lambda: tr("PLAY"),
+      callback=self._on_play_doom,
+    )
 
     # Build items and keep references for callbacks/state updates
     self._adb_toggle = toggle_item(
@@ -72,27 +80,12 @@ class DeveloperLayout(Widget):
       callback=self._on_long_maneuver_mode,
     )
 
-    self._lat_maneuver_toggle = toggle_item(
-      lambda: tr("Lateral Maneuver Mode"),
-      description="",
-      initial_state=self._params.get_bool("LateralManeuverMode"),
-      callback=self._on_lat_maneuver_mode,
-    )
-
     self._alpha_long_toggle = toggle_item(
       lambda: tr("openpilot Longitudinal Control (Alpha)"),
       description=lambda: tr(DESCRIPTIONS["alpha_longitudinal"]),
       initial_state=self._params.get_bool("AlphaLongitudinalEnabled"),
       callback=self._on_alpha_long_enabled,
       enabled=lambda: not ui_state.engaged,
-    )
-
-    self._track_mode_toggle = toggle_item(
-      lambda: tr("Track Mode"),
-      description=lambda: tr(DESCRIPTIONS["track_mode"]),
-      initial_state=self._params.get_bool("TrackMode"),
-      callback=self._on_track_mode,
-      enabled=ui_state.is_offroad,
     )
 
     self._ui_debug_toggle = toggle_item(
@@ -104,19 +97,22 @@ class DeveloperLayout(Widget):
     self._on_enable_ui_debug(self._params.get_bool("ShowDebugInfo"))
 
     self._scroller = Scroller([
+      self._doom_btn,
       self._adb_toggle,
       self._ssh_toggle,
       self._ssh_keys,
       self._joystick_toggle,
       self._long_maneuver_toggle,
-      self._lat_maneuver_toggle,
       self._alpha_long_toggle,
-      self._track_mode_toggle,
       self._ui_debug_toggle,
     ], line_separator=True, spacing=0)
 
     # Toggles should be not available to change in onroad state
     ui_state.add_offroad_transition_callback(self._update_toggles)
+
+  def _on_play_doom(self):
+    if self._doom_game is not None:
+      gui_app.push_widget(self._doom_game)
 
   def _render(self, rect):
     self._scroller.render(rect)
@@ -131,7 +127,7 @@ class DeveloperLayout(Widget):
 
     # Hide non-release toggles on release builds
     # TODO: we can do an onroad cycle, but alpha long toggle requires a deinit function to re-enable radar and not fault
-    for item in (self._joystick_toggle, self._long_maneuver_toggle, self._lat_maneuver_toggle, self._alpha_long_toggle, self._track_mode_toggle):
+    for item in (self._joystick_toggle, self._long_maneuver_toggle, self._alpha_long_toggle):
       item.set_visible(not self._is_release)
 
     # CP gating
@@ -148,14 +144,8 @@ class DeveloperLayout(Widget):
       if not long_man_enabled:
         self._long_maneuver_toggle.action_item.set_state(False)
         self._params.put_bool("LongitudinalManeuverMode", False)
-
-      lat_man_enabled = ui_state.is_offroad()
-      self._lat_maneuver_toggle.action_item.set_enabled(lat_man_enabled)
-      self._track_mode_toggle.action_item.set_enabled(lat_man_enabled)
     else:
       self._long_maneuver_toggle.action_item.set_enabled(False)
-      self._lat_maneuver_toggle.action_item.set_enabled(False)
-      self._track_mode_toggle.action_item.set_enabled(False)
       self._alpha_long_toggle.set_visible(False)
 
     # TODO: make a param control list item so we don't need to manage internal state as much here
@@ -165,9 +155,7 @@ class DeveloperLayout(Widget):
       ("SshEnabled", self._ssh_toggle),
       ("JoystickDebugMode", self._joystick_toggle),
       ("LongitudinalManeuverMode", self._long_maneuver_toggle),
-      ("LateralManeuverMode", self._lat_maneuver_toggle),
       ("AlphaLongitudinalEnabled", self._alpha_long_toggle),
-      ("TrackMode", self._track_mode_toggle),
       ("ShowDebugInfo", self._ui_debug_toggle),
     ):
       item.action_item.set_state(self._params.get_bool(key))
@@ -187,44 +175,11 @@ class DeveloperLayout(Widget):
     self._params.put_bool("JoystickDebugMode", state)
     self._params.put_bool("LongitudinalManeuverMode", False)
     self._long_maneuver_toggle.action_item.set_state(False)
-    self._params.put_bool("LateralManeuverMode", False)
-    self._lat_maneuver_toggle.action_item.set_state(False)
-    self._params.put_bool("TrackMode", False)
-    self._track_mode_toggle.action_item.set_state(False)
 
   def _on_long_maneuver_mode(self, state: bool):
     self._params.put_bool("LongitudinalManeuverMode", state)
     self._params.put_bool("JoystickDebugMode", False)
     self._joystick_toggle.action_item.set_state(False)
-    self._params.put_bool("LateralManeuverMode", False)
-    self._lat_maneuver_toggle.action_item.set_state(False)
-    self._params.put_bool("TrackMode", False)
-    self._track_mode_toggle.action_item.set_state(False)
-
-  def _on_lat_maneuver_mode(self, state: bool):
-    track_was_enabled = self._params.get_bool("TrackMode")
-    self._params.put_bool("LateralManeuverMode", state)
-    self._params.put_bool("ExperimentalMode", False)
-    self._params.put_bool("JoystickDebugMode", False)
-    self._joystick_toggle.action_item.set_state(False)
-    self._params.put_bool("LongitudinalManeuverMode", False)
-    self._long_maneuver_toggle.action_item.set_state(False)
-    self._params.put_bool("TrackMode", False)
-    self._track_mode_toggle.action_item.set_state(False)
-    if track_was_enabled:
-      self._params.put_bool("OnroadCycleRequested", True)
-
-  def _on_track_mode(self, state: bool):
-    self._params.put_bool("TrackMode", state)
-    if state:
-      self._params.put_bool("ExperimentalMode", False)
-      self._params.put_bool("JoystickDebugMode", False)
-      self._joystick_toggle.action_item.set_state(False)
-      self._params.put_bool("LongitudinalManeuverMode", False)
-      self._long_maneuver_toggle.action_item.set_state(False)
-      self._params.put_bool("LateralManeuverMode", False)
-      self._lat_maneuver_toggle.action_item.set_state(False)
-    self._params.put_bool("OnroadCycleRequested", True)
 
   def _on_alpha_long_enabled(self, state: bool):
     if state:
