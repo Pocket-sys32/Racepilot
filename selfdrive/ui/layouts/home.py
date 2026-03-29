@@ -7,8 +7,10 @@ from openpilot.selfdrive.ui.widgets.offroad_alerts import UpdateAlert, OffroadAl
 from openpilot.selfdrive.ui.widgets.exp_mode_button import ExperimentalModeButton
 from openpilot.selfdrive.ui.widgets.prime import PrimeWidget
 from openpilot.selfdrive.ui.widgets.setup import SetupWidget
+from openpilot.doom.doom import DoomGame
 from openpilot.system.ui.lib.text_measure import measure_text_cached
 from openpilot.system.ui.lib.application import gui_app, FontWeight, MousePos
+from openpilot.system.ui.widgets.button import Button, ButtonStyle
 from openpilot.system.ui.lib.multilang import tr, trn
 from openpilot.system.ui.widgets.label import gui_label
 from openpilot.system.ui.widgets import Widget
@@ -59,6 +61,8 @@ class HomeLayout(Widget):
     self._setup_widget = SetupWidget()
 
     self._exp_mode_button = ExperimentalModeButton()
+    self._doom_button = Button("DOOM", click_callback=self._launch_doom, button_style=ButtonStyle.DANGER)
+    self._doom_game = DoomGame()
     self._setup_callbacks()
 
   def show_event(self):
@@ -193,18 +197,30 @@ class HomeLayout(Widget):
   def _render_left_column(self):
     self._prime_widget.render(self.left_column_rect)
 
+  def _launch_doom(self):
+    gui_app.push_widget(self._doom_game)
+
   def _render_right_column(self):
     exp_height = 125
+    doom_height = 125
     exp_rect = rl.Rectangle(
       self.right_column_rect.x, self.right_column_rect.y, self.right_column_rect.width, exp_height
     )
     self._exp_mode_button.render(exp_rect)
 
-    setup_rect = rl.Rectangle(
+    doom_rect = rl.Rectangle(
       self.right_column_rect.x,
       self.right_column_rect.y + exp_height + SPACING,
       self.right_column_rect.width,
-      self.right_column_rect.height - exp_height - SPACING,
+      doom_height,
+    )
+    self._doom_button.render(doom_rect)
+
+    setup_rect = rl.Rectangle(
+      self.right_column_rect.x,
+      self.right_column_rect.y + exp_height + SPACING + doom_height + SPACING,
+      self.right_column_rect.width,
+      self.right_column_rect.height - exp_height - doom_height - SPACING * 2,
     )
     self._setup_widget.render(setup_rect)
 
