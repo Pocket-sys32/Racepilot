@@ -178,7 +178,17 @@ class HomeLayout(Widget):
 
     version_rect = rl.Rectangle(self.header_rect.x + self.header_rect.width - version_text_width, self.header_rect.y,
                                 version_text_width, self.header_rect.height)
-    gui_label(version_rect, self._version_text, 48, rl.WHITE, alignment=rl.GuiTextAlignment.TEXT_ALIGN_RIGHT)
+    # Render "Race" in cyan and the rest ("Comma...") in white, right-aligned
+    font = gui_app.font(FontWeight.MEDIUM)
+    cyan = rl.Color(0, 255, 255, 255)
+    full_size = measure_text_cached(font, self._version_text, 48)
+    race_part = "Race"
+    rest_part = self._version_text[len(race_part):]
+    race_size = measure_text_cached(font, race_part, 48)
+    text_x = version_rect.x + version_rect.width - full_size.x
+    text_y = version_rect.y + (version_rect.height - full_size.y) / 2
+    rl.draw_text_ex(font, race_part, rl.Vector2(int(text_x), int(text_y)), 48, 0, cyan)
+    rl.draw_text_ex(font, rest_part, rl.Vector2(int(text_x + race_size.x), int(text_y)), 48, 0, rl.WHITE)
 
   def _render_home_content(self):
     self._render_left_column()
@@ -228,6 +238,6 @@ class HomeLayout(Widget):
     self._prev_alerts_present = alerts_present
 
   def _get_version_text(self) -> str:
-    brand = "openpilot"
+    brand = "RaceComma"
     description = self.params.get("UpdaterCurrentDescription")
     return f"{brand} {description}" if description else brand
