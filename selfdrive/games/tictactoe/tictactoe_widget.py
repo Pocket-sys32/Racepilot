@@ -31,6 +31,7 @@ class TicTacToeWidget(GameSafetyGuard):
 
     self._game_over_at: float | None = None
     self._safe_close = False  # True when closed by safety guard (no forfeit)
+    self._closing = False     # Guard against double _close_game() call
     self._last_poll = 0.0
 
     # Set up Supabase client
@@ -88,7 +89,7 @@ class TicTacToeWidget(GameSafetyGuard):
           self._game_over_at = time.monotonic()
           if self._winner.startswith(self._my_mark):
             params = Params()
-            wins = int(params.get("TicTacToeWins") or "0")
+            wins = int(params.get("TicTacToeWins", encoding="utf-8") or "0")
             params.put("TicTacToeWins", str(wins + 1))
         self._pending_update = None
 
@@ -135,7 +136,7 @@ class TicTacToeWidget(GameSafetyGuard):
         self._game_over_at = time.monotonic()
         if self._winner.startswith(self._my_mark):
           params = Params()
-          wins = int(params.get("TicTacToeWins") or "0")
+          wins = int(params.get("TicTacToeWins", encoding="utf-8") or "0")
           params.put("TicTacToeWins", str(wins + 1))
 
       # Send move to Supabase in background
@@ -167,7 +168,10 @@ class TicTacToeWidget(GameSafetyGuard):
     self._rest.update("games", {"id": self._game_id}, data)
 
   def _close_game(self):
-    """Delete the game row and dismiss."""
+    """Delete the game row and dismiss. Guard prevents double-call."""
+    if self._closing:
+      return
+    self._closing = True
     if self._listener:
       self._listener.stop()
       self._listener = None

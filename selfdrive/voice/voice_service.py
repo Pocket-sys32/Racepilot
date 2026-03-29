@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import fractions
 import json
+import subprocess
 import threading
 import time
 import numpy as np
@@ -204,11 +205,34 @@ class VoiceService:
         self._out_stream.start()
         self._out_ok = True
         cloudlog.info(f"voice: output stream opened (device={self._out_stream.device})")
+        # ALSA 'Playback 0 Volume' resets to 0 on boot unless soundd (car-only) runs
+        try:
+          subprocess.run(
+            ["amixer", "-c", "0", "cset", "name=Playback 0 Volume", "8192"],
+            capture_output=True, timeout=3,
+          )
+          cloudlog.info("voice: set ALSA Playback 0 Volume to 8192")
+        except Exception as ve:
+          cloudlog.warning(f"voice: amixer volume set failed: {ve}")
         return
       except Exception as e:
         cloudlog.warning(f"voice: output stream attempt {attempt + 1} failed: {e}")
         time.sleep(3)
     cloudlog.warning("voice: output stream could not be opened after retries")
+
+  def _play_tone(self, freq: float = 880.0, duration: float = 0.12, gap: float = 0.08, count: int = 2) -> None:
+    """Enqueue N short beeps into the output buffer (e.g. connection confirmed)."""
+    if not self._out_ok:
+      return
+    n = int(_OUT_RATE * duration)
+    g = int(_OUT_RATE * gap)
+    t = np.linspace(0, duration, n, endpoint=False)
+    fade = np.minimum(1.0, np.minimum(t / 0.005, (duration - t) / 0.005))  # 5ms fade
+    beep = (np.sin(2 * np.pi * freq * t) * 0.35 * fade).astype(np.float32)
+    silence = np.zeros(g, dtype=np.float32)
+    for _ in range(count):
+      self._out_buf.extend(beep.tolist())
+      self._out_buf.extend(silence.tolist())
 
   def _out_cb(self, out: np.ndarray, frames: int, _t, _s) -> None:
     with self._lock:
@@ -308,29 +332,68 @@ class VoiceService:
 
       return pc, mic
 
-    # ── Mic cereal reader ────────────────────────────────────────────────────
+    # ── Mic input loop ───────────────────────────────────────────────────────
     async def mic_loop() -> None:
-      import cereal.messaging as messaging  # noqa: PLC0415
-      sm = messaging.SubMaster(["rawAudioData"])
-      while True:
-        try:
-          await loop.run_in_executor(None, lambda: sm.update(100))
-        except RuntimeError:
-          break
-        if sm.updated["rawAudioData"]:
-          raw = bytes(sm["rawAudioData"].data)
+      import queue as _queue  # noqa: PLC0415
+      mic_q: _queue.SimpleQueue[bytes] = _queue.SimpleQueue()
+      in_stream = None
+
+      # Try direct sounddevice InputStream (works offroad — micd not required)
+      try:
+        import sounddevice as _sd  # noqa: PLC0415
+
+        def _mic_cb(indata: np.ndarray, frames: int, _t, _s) -> None:
+          pcm_bytes = (indata.flatten() * 32768.0).clip(-32768, 32767).astype(np.int16).tobytes()
+          mic_q.put(pcm_bytes)
+
+        in_stream = _sd.InputStream(
+          samplerate=_MIC_RATE, channels=1, dtype="float32",
+          callback=_mic_cb, blocksize=320,
+        )
+        in_stream.start()
+        cloudlog.info(f"voice: mic input stream opened (device={in_stream.device})")
+      except Exception as e:
+        cloudlog.warning(f"voice: mic InputStream failed: {e} — falling back to rawAudioData")
+
+      if in_stream:
+        # Drain the thread-safe queue every 20 ms
+        while True:
+          await asyncio.sleep(0.02)
+          while not mic_q.empty():
+            raw = mic_q.get_nowait()
+            with self._lock:
+              mic_on = not self._mic_muted
+            for _, mic in peers.values():
+              mic.active = mic_on
+            if mic_on:
+              for _, mic in peers.values():
+                mic.feed(raw)
           with self._lock:
             mic_on = not self._mic_muted
-          for _, mic in peers.values():
-            mic.active = mic_on
-          if mic_on:
+          if peers:
+            self._set_state(VoiceState.TALKING if mic_on else VoiceState.IDLE)
+      else:
+        # Fallback: rawAudioData cereal (available when car is connected / micd running)
+        import cereal.messaging as messaging  # noqa: PLC0415
+        sm = messaging.SubMaster(["rawAudioData"])
+        while True:
+          try:
+            await loop.run_in_executor(None, lambda: sm.update(100))
+          except RuntimeError:
+            break
+          if sm.updated["rawAudioData"]:
+            raw = bytes(sm["rawAudioData"].data)
+            with self._lock:
+              mic_on = not self._mic_muted
             for _, mic in peers.values():
-              mic.feed(raw)
-        # update visible state
-        with self._lock:
-          mic_on = not self._mic_muted
-        if peers:
-          self._set_state(VoiceState.TALKING if mic_on else VoiceState.IDLE)
+              mic.active = mic_on
+            if mic_on:
+              for _, mic in peers.values():
+                mic.feed(raw)
+          with self._lock:
+            mic_on = not self._mic_muted
+          if peers:
+            self._set_state(VoiceState.TALKING if mic_on else VoiceState.IDLE)
 
     asyncio.ensure_future(mic_loop())
 
@@ -407,6 +470,7 @@ class VoiceService:
       if evt == "connected":
         self._set_state(VoiceState.IDLE)
         cloudlog.info("voice: signaling connected")
+        self._play_tone(freq=880.0, count=2)  # two beeps = online
         continue
       if evt == "disconnected":
         self._set_state(VoiceState.CONNECTING)
