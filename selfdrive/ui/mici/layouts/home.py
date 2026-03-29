@@ -173,7 +173,7 @@ class MiciHomeLayout(Widget):
 
   def _render(self, _):
     # TODO: why is there extra space here to get it to be flush?
-    text_pos = rl.Vector2(self.rect.x - 2 + HOME_PADDING, self.rect.y - 16)
+    text_pos = rl.Vector2(self.rect.x - 2 + HOME_PADDING, self.rect.y + 8)
     self._race_label.set_position(text_pos.x, text_pos.y)
     self._race_label.render()
     self._comma_label.set_position(text_pos.x + self._race_label.text_width, text_pos.y)
