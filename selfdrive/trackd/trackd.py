@@ -75,7 +75,10 @@ def main() -> None:
     model_curvature = float(model.action.desiredCurvature)
     t = float(sm.logMonoTime['modelV2']) * 1e-9
 
-    enabled = bool(sm['selfdriveState'].enabled and track_allowed)
+    # Track mode runs whenever car is connected and track_allowed, regardless
+    # of whether openpilot is engaged (tracks have no lane lines).
+    car_active = sm.valid['carState']
+    enabled = bool(car_active and track_allowed)
     if enabled:
       session.update_odometry(t, speed, yaw, model_curvature, accel)
     else:
@@ -90,7 +93,7 @@ def main() -> None:
     )
 
     plan_send = messaging.new_message('trackPlan')
-    plan_send.valid = track_allowed and enabled
+    plan_send.valid = track_allowed and car_active
     if command is not None:
       tp = plan_send.trackPlan
       tp.active = enabled

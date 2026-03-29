@@ -124,8 +124,8 @@ class VoiceService:
   def __init__(self) -> None:
     self._lock           = threading.Lock()
     self._state          = VoiceState.OFFLINE
-    self._mic_muted      = True    # True = mic OFF by default (tap icon to unmute)
-    self._speaker_muted  = True    # True = speaker OFF by default (tap icon to unmute)
+    self._mic_muted      = True    # True = mic OFF by default (tap mic icon to unmute)
+    self._speaker_muted  = False   # Speaker ON by default — hear peers without tapping
     self._peer_count     = 0
 
     raw = Params().get("DongleId")
