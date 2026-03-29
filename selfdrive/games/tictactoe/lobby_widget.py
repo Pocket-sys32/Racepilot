@@ -28,7 +28,8 @@ class LobbyWidget(GameSafetyGuard):
     self._font_bold = gui_app.font(FontWeight.BOLD)
 
     # State
-    self._state = "menu"  # menu, creating, waiting, browsing, error
+    self._state = "menu"  # menu, creating, waiting, browsing, joining, error
+    self._joining_code = ""
     self._lobby_code = ""
     self._error_msg = ""
     self._game_data: dict | None = None
@@ -62,6 +63,8 @@ class LobbyWidget(GameSafetyGuard):
       self._render_waiting(rect)
     elif self._state == "browsing":
       self._render_browsing(rect)
+    elif self._state == "joining":
+      self._render_joining(rect)
     elif self._state == "error":
       self._render_error(rect)
 
@@ -165,13 +168,24 @@ class LobbyWidget(GameSafetyGuard):
         rl.draw_rectangle_rounded(row_rect, 0.2, 6, bg)
         rl.draw_rectangle_rounded_lines(row_rect, 0.2, 6, rl.Color(80, 120, 180, 180))
 
+        code = game.get("lobby_code", "------")
         host = game.get("player_x_id", "unknown")
-        short_host = host[:12] + "..." if len(host) > 12 else host
-        label = f"Host: {short_host}"
-        label_sz = max(14, int(row_h * 0.36))
-        label_y = row_y + (row_h - label_sz) / 2
-        rl.draw_text_ex(self._font_bold, label,
-                        rl.Vector2(pad + 12, label_y), label_sz, 0, rl.WHITE)
+        short_host = host[:10] + "..." if len(host) > 10 else host
+        code_sz = max(16, int(row_h * 0.38))
+        host_sz = max(11, int(row_h * 0.24))
+        code_y_pos = row_y + row_h * 0.18
+        host_y_pos = row_y + row_h * 0.58
+        rl.draw_text_ex(self._font_bold, code,
+                        rl.Vector2(pad + 12, code_y_pos), code_sz, 0, rl.Color(80, 200, 255, 255))
+        rl.draw_text_ex(self._font, f"host: {short_host}",
+                        rl.Vector2(pad + 12, host_y_pos), host_sz, 0, rl.Color(140, 140, 140, 200))
+        # "Tap to join" hint on right
+        hint_sz = max(10, int(row_h * 0.22))
+        hint = "tap to join →"
+        hint_w = rl.measure_text_ex(self._font, hint, hint_sz, 0).x
+        rl.draw_text_ex(self._font, hint,
+                        rl.Vector2(row_rect.x + row_rect.width - hint_w - 12, row_y + (row_h - hint_sz) / 2),
+                        hint_sz, 0, rl.Color(100, 180, 100, 180))
 
         # Tap to join
         if hovered and rl.is_mouse_button_released(rl.MouseButton.MOUSE_BUTTON_LEFT):
@@ -182,6 +196,25 @@ class LobbyWidget(GameSafetyGuard):
     self._back_btn.render(rl.Rectangle(pad, bottom_y, max(90, int(avail_w * 0.35)), btn_h))
     self._refresh_btn.render(rl.Rectangle(pad + max(90, int(avail_w * 0.35)) + gap, bottom_y,
                                           max(90, int(avail_w * 0.35)), btn_h))
+
+  def _render_joining(self, rect: rl.Rectangle):
+    h = rect.height
+    pad = rect.x + rect.width * 0.07
+    title_sz = max(18, int(h * 0.13))
+    code_sz  = max(28, int(h * 0.22))
+    sub_sz   = max(12, int(h * 0.07))
+    gap      = max(6, int(h * 0.04))
+
+    title_y = rect.y + h * 0.12
+    code_y  = title_y + title_sz + gap
+    sub_y   = code_y + code_sz + gap
+
+    rl.draw_text_ex(self._font, "Joining game...",
+                    rl.Vector2(pad, title_y), title_sz, 0, rl.Color(150, 150, 150, 255))
+    rl.draw_text_ex(self._font_bold, self._joining_code,
+                    rl.Vector2(pad, code_y), code_sz, 0, rl.Color(80, 200, 255, 255))
+    rl.draw_text_ex(self._font, "Connecting to host...",
+                    rl.Vector2(pad, sub_y), sub_sz, 0, rl.Color(120, 120, 120, 200))
 
   def _render_error(self, rect: rl.Rectangle):
     h = rect.height
@@ -263,6 +296,9 @@ class LobbyWidget(GameSafetyGuard):
     if not config:
       return
 
+    self._joining_code = game.get("lobby_code", "")
+    self._state = "joining"
+
     def join():
       url, key = config
       rest = SupabaseREST(url, key)
@@ -287,6 +323,7 @@ class LobbyWidget(GameSafetyGuard):
     self._state = "menu"
     self._game_data = None
     self._open_games = []
+    self._joining_code = ""
 
   def _launch_game(self, game_data: dict, my_mark: str):
     if self._listener:
