@@ -103,9 +103,9 @@ class MiciHomeLayout(Widget):
       self._mic_icon,
     ], spacing=18)
 
-    self._race_label = UnifiedLabel("Race", font_size=72, font_weight=FontWeight.DISPLAY, max_width=480, wrap_text=False,
+    self._race_label = UnifiedLabel("race", font_size=72, font_weight=FontWeight.DISPLAY, max_width=480, wrap_text=False,
                                     text_color=rl.Color(0, 255, 255, 255))
-    self._comma_label = UnifiedLabel("Comma", font_size=72, font_weight=FontWeight.DISPLAY, max_width=480, wrap_text=False,
+    self._comma_label = UnifiedLabel("pilot", font_size=72, font_weight=FontWeight.DISPLAY, max_width=480, wrap_text=False,
                                      text_color=rl.WHITE)
     self._version_label = UnifiedLabel("", font_size=36, font_weight=FontWeight.ROMAN, max_width=480, wrap_text=False)
     self._large_version_label = UnifiedLabel("", font_size=64, text_color=rl.GRAY, font_weight=FontWeight.ROMAN, max_width=480, wrap_text=False)
@@ -206,5 +206,5 @@ class MiciHomeLayout(Widget):
     self._experimental_icon.set_visible(self._experimental_mode)
     self._mic_icon.set_visible(ui_state.recording_audio)
 
-    footer_rect = rl.Rectangle(self.rect.x + HOME_PADDING, self.rect.y + self.rect.height - 48, self.rect.width - HOME_PADDING, 48)
+    footer_rect = rl.Rectangle(self.rect.x + HOME_PADDING, self.rect.y + self.rect.height - 64, self.rect.width - HOME_PADDING, 48)
     self._status_bar_layout.render(footer_rect)

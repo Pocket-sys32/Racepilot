@@ -41,7 +41,7 @@ class SettingsLayout(NavScroller):
     firehose_btn.set_click_callback(lambda: gui_app.push_widget(firehose_panel))
 
     games_panel = GamesLayoutMici()
-    games_btn = SettingsBigButton("games", "", gui_app.texture("icons_mici/settings/developer_icon.png", 64, 60))
+    games_btn = SettingsBigButton("games", "", gui_app.texture("icons_mici/settings/games.png", 64, 64))
     games_btn.set_click_callback(lambda: gui_app.push_widget(games_panel))
 
     self._scroller.add_widgets([
