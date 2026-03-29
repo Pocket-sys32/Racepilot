@@ -144,8 +144,9 @@ class VoiceService:
     self._dongle_id: str = raw.decode("utf-8") if isinstance(raw, bytes) else (raw or "unknown")
 
     self._out_buf: deque[float] = deque(maxlen=_JIT_MAX)
-    self._out_stream = None
-    self._out_ok     = False
+    self._out_stream  = None
+    self._out_ok      = False
+    self._out_playing = False  # jitter buffer hysteresis state
 
     self._thread = threading.Thread(target=self._run, daemon=True, name="voice_svc")
     self._thread.start()
@@ -249,7 +250,21 @@ class VoiceService:
   def _out_cb(self, out: np.ndarray, frames: int, _t, _s) -> None:
     with self._lock:
       muted = self._speaker_muted
-    if muted or len(self._out_buf) < frames:
+    if muted:
+      out[:] = 0.0
+      return
+    buf_len = len(self._out_buf)
+    # Hysteresis: start playing once 3 frames buffered, stop only when empty.
+    # Without this, every frame play drains the buffer to 0 → next call is
+    # silence → alternates play/silence every 20ms = robotic sound.
+    if not self._out_playing:
+      if buf_len >= frames * 3:
+        self._out_playing = True
+      else:
+        out[:] = 0.0
+        return
+    if buf_len < frames:
+      self._out_playing = False
       out[:] = 0.0
       return
     out[:, 0] = np.array([self._out_buf.popleft() for _ in range(frames)], dtype=np.float32)
@@ -347,16 +362,24 @@ class VoiceService:
 
     # ── Mic input loop ───────────────────────────────────────────────────────
     async def mic_loop() -> None:
-      import queue as _queue  # noqa: PLC0415
-      mic_q: _queue.SimpleQueue[bytes] = _queue.SimpleQueue()
       in_stream = None
 
-      # Try direct sounddevice InputStream at 48 kHz (same as output — no resampling)
+      # Use call_soon_threadsafe to push mic frames directly into the asyncio
+      # event loop the instant they arrive — no intermediate queue or sleep loop,
+      # so Opus gets perfectly timed 20ms frames with no added jitter.
       try:
         import sounddevice as _sd  # noqa: PLC0415
 
-        def _mic_cb(indata: np.ndarray, frames: int, _t, _s) -> None:
-          mic_q.put(indata.flatten().copy())  # float32 48 kHz samples
+        def _mic_cb(indata: np.ndarray, _frames: int, _t, _s) -> None:
+          data = indata.flatten().copy()
+          def _feed():
+            with self._lock:
+              mic_on = not self._mic_muted
+            for _, mic in peers.values():
+              mic.active = mic_on
+              if mic_on:
+                mic.feed_native(data)
+          loop.call_soon_threadsafe(_feed)
 
         in_stream = _sd.InputStream(
           samplerate=_OUT_RATE, channels=1, dtype="float32",
@@ -368,22 +391,13 @@ class VoiceService:
         cloudlog.warning(f"voice: mic InputStream failed: {e} — falling back to rawAudioData")
 
       if in_stream:
-        # Drain the thread-safe queue every 20 ms
+        # Coroutine stays alive to update state; actual work done via call_soon_threadsafe
         while True:
-          await asyncio.sleep(0.02)
-          while not mic_q.empty():
-            raw = mic_q.get_nowait()  # float32 48 kHz ndarray
-            with self._lock:
-              mic_on = not self._mic_muted
-            for _, mic in peers.values():
-              mic.active = mic_on
-            if mic_on:
-              for _, mic in peers.values():
-                mic.feed_native(raw)
           with self._lock:
             mic_on = not self._mic_muted
           if peers:
             self._set_state(VoiceState.TALKING if mic_on else VoiceState.IDLE)
+          await asyncio.sleep(0.5)
       else:
         # Fallback: rawAudioData cereal (available when car is connected / micd running)
         import cereal.messaging as messaging  # noqa: PLC0415
