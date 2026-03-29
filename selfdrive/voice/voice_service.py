@@ -86,7 +86,9 @@ if _AIORTC_OK:
       """48 kHz float32 samples directly — no resampling needed."""
       if not self.active:
         return
-      self._enqueue(pcm_f32)
+      # Pre-gain: boost mic level before Opus encoding so codec allocates more bits
+      boosted = np.clip(pcm_f32 * 6.0, -1.0, 1.0)
+      self._enqueue(boosted)
 
     def _enqueue(self, pcm48: np.ndarray) -> None:
       try:
@@ -101,7 +103,8 @@ if _AIORTC_OK:
     async def recv(self) -> "av.AudioFrame":
       while len(self._buf) < _FRAME_OUT:
         try:
-          chunk = await asyncio.wait_for(self._q.get(), timeout=0.5)
+          # 25ms timeout — keeps Opus pipeline flowing without 500ms stall artifacts
+          chunk = await asyncio.wait_for(self._q.get(), timeout=0.025)
         except asyncio.TimeoutError:
           chunk = np.zeros(_FRAME_OUT, dtype=np.float32)
         self._buf = np.concatenate([self._buf, chunk])
