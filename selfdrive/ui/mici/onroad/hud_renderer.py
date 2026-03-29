@@ -26,6 +26,7 @@ class FontSizes:
   speed_unit: int = 66
   max_speed: int = 36
   set_speed: int = 112
+  track_mode: int = 34
 
 
 @dataclass(frozen=True)
@@ -178,6 +179,7 @@ class HudRenderer(Widget):
       self._draw_set_speed(rect)
 
     self._draw_steering_wheel(rect)
+    self._draw_track_mode_label(rect)
 
   def _draw_steering_wheel(self, rect: rl.Rectangle) -> None:
     wheel_txt = self._txt_wheel_critical if self._show_wheel_critical else self._txt_wheel
@@ -262,6 +264,28 @@ class HudRenderer(Widget):
       0,
       max_color,
     )
+
+  def _draw_track_mode_label(self, rect: rl.Rectangle) -> None:
+    sm = ui_state.sm
+    if not self._can_draw_top_icons or not sm.valid["trackState"] or not sm["trackState"].active:
+      return
+
+    label = tr("TRACK MODE")
+    exploratory = sm["trackState"].exploratory
+    bg = rl.Color(255, 183, 77, 55) if exploratory else rl.Color(76, 201, 240, 55)
+    border = rl.Color(255, 183, 77, 180) if exploratory else rl.Color(76, 201, 240, 180)
+    text = rl.Color(255, 220, 170, 255) if exploratory else rl.Color(180, 236, 255, 255)
+
+    text_size = measure_text_cached(self._font_semi_bold, label, FONT_SIZES.track_mode)
+    width = text_size.x + 60
+    height = text_size.y + 24
+    x = rect.x + (rect.width - width) / 2
+    y = rect.y + 24
+    label_rect = rl.Rectangle(x, y, width, height)
+    rl.draw_rectangle_rounded(label_rect, 0.45, 8, bg)
+    rl.draw_rectangle_rounded_lines_ex(label_rect, 0.45, 8, 3, border)
+    rl.draw_text_ex(self._font_semi_bold, label, rl.Vector2(x + (width - text_size.x) / 2, y + (height - text_size.y) / 2 - 1),
+                    FONT_SIZES.track_mode, 0, text)
 
   def _draw_current_speed(self, rect: rl.Rectangle) -> None:
     """Draw the current vehicle speed and unit."""

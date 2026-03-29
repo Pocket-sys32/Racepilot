@@ -31,6 +31,7 @@ class FontSizes:
   speed_unit: int = 66
   max_speed: int = 40
   set_speed: int = 90
+  track_mode: int = 38
 
 
 @dataclass(frozen=True)
@@ -116,6 +117,7 @@ class HudRenderer(Widget):
       self._draw_set_speed(rect)
 
     self._draw_current_speed(rect)
+    self._draw_track_mode_label(rect)
 
     button_x = rect.x + rect.width - UI_CONFIG.border_size - UI_CONFIG.button_size
     button_y = rect.y + UI_CONFIG.border_size
@@ -178,3 +180,25 @@ class HudRenderer(Widget):
     unit_text_size = measure_text_cached(self._font_medium, unit_text, FONT_SIZES.speed_unit)
     unit_pos = rl.Vector2(rect.x + rect.width / 2 - unit_text_size.x / 2, 290 - unit_text_size.y / 2)
     rl.draw_text_ex(self._font_medium, unit_text, unit_pos, FONT_SIZES.speed_unit, 0, COLORS.WHITE_TRANSLUCENT)
+
+  def _draw_track_mode_label(self, rect: rl.Rectangle) -> None:
+    sm = ui_state.sm
+    if not sm.valid["trackState"] or not sm["trackState"].active:
+      return
+
+    label = tr("TRACK MODE")
+    exploratory = sm["trackState"].exploratory
+    bg = rl.Color(255, 183, 77, 55) if exploratory else rl.Color(76, 201, 240, 55)
+    border = rl.Color(255, 183, 77, 180) if exploratory else rl.Color(76, 201, 240, 180)
+    text = rl.Color(255, 220, 170, 255) if exploratory else rl.Color(180, 236, 255, 255)
+
+    text_size = measure_text_cached(self._font_semi_bold, label, FONT_SIZES.track_mode)
+    width = text_size.x + 70
+    height = text_size.y + 28
+    x = rect.x + (rect.width - width) / 2
+    y = rect.y + 34
+    label_rect = rl.Rectangle(x, y, width, height)
+    rl.draw_rectangle_rounded(label_rect, 0.45, 8, bg)
+    rl.draw_rectangle_rounded_lines_ex(label_rect, 0.45, 8, 3, border)
+    rl.draw_text_ex(self._font_semi_bold, label, rl.Vector2(x + (width - text_size.x) / 2, y + (height - text_size.y) / 2 - 2),
+                    FONT_SIZES.track_mode, 0, text)

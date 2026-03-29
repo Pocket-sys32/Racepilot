@@ -25,6 +25,11 @@ DESCRIPTIONS = {
     "Enable this to switch to openpilot longitudinal control. Enabling Experimental mode is recommended when enabling openpilot longitudinal control alpha. " +
     "Changing this setting will restart openpilot if the car is powered on."
   ),
+  'track_mode': tr_noop(
+    "<b>WARNING: Track mode is experimental and intended only for closed-course testing.</b><br><br>" +
+    "When enabled, openpilot will use the track planner to show and follow a predicted path. " +
+    "Changing this setting will restart openpilot if the car is powered on."
+  ),
 }
 
 
@@ -82,6 +87,14 @@ class DeveloperLayout(Widget):
       enabled=lambda: not ui_state.engaged,
     )
 
+    self._track_mode_toggle = toggle_item(
+      lambda: tr("Track Mode"),
+      description=lambda: tr(DESCRIPTIONS["track_mode"]),
+      initial_state=self._params.get_bool("TrackMode"),
+      callback=self._on_track_mode,
+      enabled=ui_state.is_offroad,
+    )
+
     self._ui_debug_toggle = toggle_item(
       lambda: tr("UI Debug Mode"),
       description="",
@@ -98,6 +111,7 @@ class DeveloperLayout(Widget):
       self._long_maneuver_toggle,
       self._lat_maneuver_toggle,
       self._alpha_long_toggle,
+      self._track_mode_toggle,
       self._ui_debug_toggle,
     ], line_separator=True, spacing=0)
 
@@ -117,7 +131,7 @@ class DeveloperLayout(Widget):
 
     # Hide non-release toggles on release builds
     # TODO: we can do an onroad cycle, but alpha long toggle requires a deinit function to re-enable radar and not fault
-    for item in (self._joystick_toggle, self._long_maneuver_toggle, self._lat_maneuver_toggle, self._alpha_long_toggle):
+    for item in (self._joystick_toggle, self._long_maneuver_toggle, self._lat_maneuver_toggle, self._alpha_long_toggle, self._track_mode_toggle):
       item.set_visible(not self._is_release)
 
     # CP gating
@@ -137,9 +151,11 @@ class DeveloperLayout(Widget):
 
       lat_man_enabled = ui_state.is_offroad()
       self._lat_maneuver_toggle.action_item.set_enabled(lat_man_enabled)
+      self._track_mode_toggle.action_item.set_enabled(lat_man_enabled)
     else:
       self._long_maneuver_toggle.action_item.set_enabled(False)
       self._lat_maneuver_toggle.action_item.set_enabled(False)
+      self._track_mode_toggle.action_item.set_enabled(False)
       self._alpha_long_toggle.set_visible(False)
 
     # TODO: make a param control list item so we don't need to manage internal state as much here
@@ -151,6 +167,7 @@ class DeveloperLayout(Widget):
       ("LongitudinalManeuverMode", self._long_maneuver_toggle),
       ("LateralManeuverMode", self._lat_maneuver_toggle),
       ("AlphaLongitudinalEnabled", self._alpha_long_toggle),
+      ("TrackMode", self._track_mode_toggle),
       ("ShowDebugInfo", self._ui_debug_toggle),
     ):
       item.action_item.set_state(self._params.get_bool(key))
@@ -172,6 +189,8 @@ class DeveloperLayout(Widget):
     self._long_maneuver_toggle.action_item.set_state(False)
     self._params.put_bool("LateralManeuverMode", False)
     self._lat_maneuver_toggle.action_item.set_state(False)
+    self._params.put_bool("TrackMode", False)
+    self._track_mode_toggle.action_item.set_state(False)
 
   def _on_long_maneuver_mode(self, state: bool):
     self._params.put_bool("LongitudinalManeuverMode", state)
@@ -179,14 +198,33 @@ class DeveloperLayout(Widget):
     self._joystick_toggle.action_item.set_state(False)
     self._params.put_bool("LateralManeuverMode", False)
     self._lat_maneuver_toggle.action_item.set_state(False)
+    self._params.put_bool("TrackMode", False)
+    self._track_mode_toggle.action_item.set_state(False)
 
   def _on_lat_maneuver_mode(self, state: bool):
+    track_was_enabled = self._params.get_bool("TrackMode")
     self._params.put_bool("LateralManeuverMode", state)
     self._params.put_bool("ExperimentalMode", False)
     self._params.put_bool("JoystickDebugMode", False)
     self._joystick_toggle.action_item.set_state(False)
     self._params.put_bool("LongitudinalManeuverMode", False)
     self._long_maneuver_toggle.action_item.set_state(False)
+    self._params.put_bool("TrackMode", False)
+    self._track_mode_toggle.action_item.set_state(False)
+    if track_was_enabled:
+      self._params.put_bool("OnroadCycleRequested", True)
+
+  def _on_track_mode(self, state: bool):
+    self._params.put_bool("TrackMode", state)
+    if state:
+      self._params.put_bool("ExperimentalMode", False)
+      self._params.put_bool("JoystickDebugMode", False)
+      self._joystick_toggle.action_item.set_state(False)
+      self._params.put_bool("LongitudinalManeuverMode", False)
+      self._long_maneuver_toggle.action_item.set_state(False)
+      self._params.put_bool("LateralManeuverMode", False)
+      self._lat_maneuver_toggle.action_item.set_state(False)
+    self._params.put_bool("OnroadCycleRequested", True)
 
   def _on_alpha_long_enabled(self, state: bool):
     if state:

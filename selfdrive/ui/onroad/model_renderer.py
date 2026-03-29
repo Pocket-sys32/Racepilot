@@ -55,9 +55,13 @@ class ModelRenderer(Widget):
 
     # Initialize ModelPoints objects
     self._path = ModelPoints()
+    self._track_path = ModelPoints()
     self._lane_lines = [ModelPoints() for _ in range(4)]
     self._road_edges = [ModelPoints() for _ in range(2)]
     self._acceleration_x = np.empty((0,), dtype=np.float32)
+    self._track_active = False
+    self._track_exploratory = True
+    self._track_learned_ready = False
 
     # Transform matrix (3x3 for car space to screen space)
     self._car_space_transform = np.zeros((3, 3), dtype=np.float32)
@@ -103,22 +107,31 @@ class ModelRenderer(Widget):
       self._longitudinal_control = sm['carParams'].openpilotLongitudinalControl
 
     model = sm['modelV2']
+    track_plan = sm['trackPlan']
+    track_state = sm['trackState']
     radar_state = sm['radarState'] if sm.valid['radarState'] else None
     lead_one = radar_state.leadOne if radar_state else None
     render_lead_indicator = self._longitudinal_control and radar_state is not None
 
     # Update model data when needed
     model_updated = sm.updated['modelV2']
-    if model_updated or sm.updated['radarState'] or self._transform_dirty:
+    if model_updated or sm.updated['radarState'] or sm.updated['trackPlan'] or sm.updated['trackState'] or self._transform_dirty:
       if model_updated:
         self._update_raw_points(model)
 
-      path_x_array = self._path.raw_points[:, 0]
-      if path_x_array.size == 0:
-        return
+      self._track_active = sm.valid['trackState'] and track_state.active
+      self._track_exploratory = (not sm.valid['trackPlan']) or track_plan.exploratory
+      self._track_learned_ready = sm.valid['trackState'] and track_state.learnedReady
+      if sm.valid['trackPlan'] and len(track_plan.pathX) > 0 and len(track_plan.pathX) == len(track_plan.pathY) == len(track_plan.pathZ):
+        self._track_path.raw_points = np.array([track_plan.pathX, track_plan.pathY, track_plan.pathZ], dtype=np.float32).T
+      else:
+        self._track_path.raw_points = np.empty((0, 3), dtype=np.float32)
 
-      self._update_model(lead_one, path_x_array)
-      if render_lead_indicator:
+      path_x_array = self._path.raw_points[:, 0]
+      self._update_track_path()
+      if path_x_array.size != 0:
+        self._update_model(lead_one, path_x_array)
+      if render_lead_indicator and path_x_array.size != 0:
         self._update_leads(radar_state, path_x_array)
       self._transform_dirty = False
 
@@ -275,29 +288,42 @@ class ModelRenderer(Widget):
 
   def _draw_path(self, sm):
     """Draw path with dynamic coloring based on mode and throttle state."""
-    if not self._path.projected_points.size:
+    if self._path.projected_points.size:
+      allow_throttle = sm['longitudinalPlan'].allowThrottle or not self._longitudinal_control
+      self._blend_filter.update(int(allow_throttle))
+
+      if self._experimental_mode:
+        # Draw with acceleration coloring
+        if len(self._exp_gradient.colors) > 1:
+          draw_polygon(self._rect, self._path.projected_points, gradient=self._exp_gradient)
+        else:
+          draw_polygon(self._rect, self._path.projected_points, rl.Color(255, 255, 255, 30))
+      else:
+        # Blend throttle/no throttle colors based on transition
+        blend_factor = round(self._blend_filter.x * 100) / 100
+        blended_colors = self._blend_colors(NO_THROTTLE_COLORS, THROTTLE_COLORS, blend_factor)
+        gradient = Gradient(
+          start=(0.0, 1.0),  # Bottom of path
+          end=(0.0, 0.0),  # Top of path
+          colors=blended_colors,
+          stops=[0.0, 0.5, 1.0],
+        )
+        draw_polygon(self._rect, self._path.projected_points, gradient=gradient)
+
+    if self._track_active and self._track_path.projected_points.size:
+      color = rl.Color(76, 201, 240, 160) if (self._track_learned_ready and not self._track_exploratory) else rl.Color(255, 183, 77, 140)
+      draw_polygon(self._rect, self._track_path.projected_points, color)
+
+  def _update_track_path(self):
+    if self._track_path.raw_points.size == 0:
+      self._track_path.projected_points = np.empty((0, 2), dtype=np.float32)
       return
 
-    allow_throttle = sm['longitudinalPlan'].allowThrottle or not self._longitudinal_control
-    self._blend_filter.update(int(allow_throttle))
-
-    if self._experimental_mode:
-      # Draw with acceleration coloring
-      if len(self._exp_gradient.colors) > 1:
-        draw_polygon(self._rect, self._path.projected_points, gradient=self._exp_gradient)
-      else:
-        draw_polygon(self._rect, self._path.projected_points, rl.Color(255, 255, 255, 30))
-    else:
-      # Blend throttle/no throttle colors based on transition
-      blend_factor = round(self._blend_filter.x * 100) / 100
-      blended_colors = self._blend_colors(NO_THROTTLE_COLORS, THROTTLE_COLORS, blend_factor)
-      gradient = Gradient(
-        start=(0.0, 1.0),  # Bottom of path
-        end=(0.0, 0.0),  # Top of path
-        colors=blended_colors,
-        stops=[0.0, 0.5, 1.0],
-      )
-      draw_polygon(self._rect, self._path.projected_points, gradient=gradient)
+    max_distance = np.clip(max(float(np.max(self._track_path.raw_points[:, 0])), MIN_DRAW_DISTANCE), MIN_DRAW_DISTANCE, MAX_DRAW_DISTANCE)
+    max_idx = self._get_path_length_idx(self._track_path.raw_points[:, 0], max_distance)
+    self._track_path.projected_points = self._map_line_to_polygon(
+      self._track_path.raw_points, 0.35, self._path_offset_z, max_idx, max_distance, allow_invert=False
+    )
 
   def _draw_lead_indicator(self):
     # Draw lead vehicles if available

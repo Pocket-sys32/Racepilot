@@ -1307,6 +1307,42 @@ struct LongitudinalPlan @0xe00b5b3eba12876c {
     y @1 :List(Float32);
   }
 }
+
+struct TrackPlan {
+  active @0 :Bool;
+  exploratory @1 :Bool;
+  learnedReady @2 :Bool;
+  targetCurvature @3 :Float32;
+  targetSpeed @4 :Float32;
+  targetAccel @5 :Float32;
+  shouldStop @6 :Bool;
+  progress @7 :Float32;
+  localizationConfidence @8 :Float32;
+  lineConfidence @9 :Float32;
+  pathX @10 :List(Float32);
+  pathY @11 :List(Float32);
+  pathZ @12 :List(Float32);
+}
+
+struct TrackState {
+  active @0 :Bool;
+  exploratory @1 :Bool;
+  learnedReady @2 :Bool;
+  currentLap @3 :UInt32;
+  completedLaps @4 :UInt32;
+  lapDistance @5 :Float32;
+  trackLength @6 :Float32;
+  progress @7 :Float32;
+  localX @8 :Float32;
+  localY @9 :Float32;
+  localYaw @10 :Float32;
+  localizationConfidence @11 :Float32;
+  lineConfidence @12 :Float32;
+  offTrack @13 :Bool;
+  firstLapComplete @14 :Bool;
+  statusText1 @15 :Text;
+  statusText2 @16 :Text;
+}
 struct UiPlan {
   frameId @2 :UInt32;
   position @0 :XYZTData;
@@ -2618,6 +2654,8 @@ struct Event {
     audioFeedback @149 :AudioFeedback;
 
     lateralManeuverPlan @150 :LateralManeuverPlan;
+    trackPlan @151 :TrackPlan;
+    trackState @152 :TrackState;
 
     # *********** debug ***********
     testJoystick @52 :Joystick;

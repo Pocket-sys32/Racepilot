@@ -120,6 +120,7 @@ class SelfdriveD:
     self.experimental_mode = False
     self.personality = self.params.get("LongitudinalPersonality", return_default=True)
     self.recalibrating_seen = False
+    self.track_mode = self.params.get_bool("TrackMode")
     self.state_machine = StateMachine()
     self.rk = Ratekeeper(100, print_delay_threshold=None)
 
@@ -149,7 +150,7 @@ class SelfdriveD:
       self.events.add(EventName.joystickDebug)
       self.startup_event = None
 
-    if self.sm.recv_frame['lateralManeuverPlan'] > 0:
+    if self.sm.recv_frame['lateralManeuverPlan'] > 0 and not self.track_mode:
       self.events.add(EventName.lateralManeuver)
       self.startup_event = None
     elif self.sm.recv_frame['alertDebug'] > 0:
@@ -513,6 +514,7 @@ class SelfdriveD:
       self.disengage_on_accelerator = self.params.get_bool("DisengageOnAccelerator")
       self.experimental_mode = self.params.get_bool("ExperimentalMode") and self.CP.openpilotLongitudinalControl
       self.personality = self.params.get("LongitudinalPersonality", return_default=True)
+      self.track_mode = self.params.get_bool("TrackMode")
       time.sleep(0.1)
 
   def run(self):

@@ -61,6 +61,9 @@ class DeveloperLayoutMici(NavScroller):
     self._alpha_long_toggle = BigToggle("alpha longitudinal",
                                         initial_state=ui_state.params.get_bool("AlphaLongitudinalEnabled"),
                                         toggle_callback=self._on_alpha_long_enabled)
+    self._track_mode_toggle = BigToggle("track mode",
+                                        initial_state=ui_state.params.get_bool("TrackMode"),
+                                        toggle_callback=self._on_track_mode)
     self._debug_mode_toggle = BigParamControl("ui debug mode", "ShowDebugInfo",
                                               toggle_callback=lambda checked: (gui_app.set_show_touches(checked),
                                                                                gui_app.set_show_fps(checked)))
@@ -73,6 +76,7 @@ class DeveloperLayoutMici(NavScroller):
       self._long_maneuver_toggle,
       self._lat_maneuver_toggle,
       self._alpha_long_toggle,
+      self._track_mode_toggle,
       self._debug_mode_toggle,
     ])
 
@@ -84,11 +88,12 @@ class DeveloperLayoutMici(NavScroller):
       ("LongitudinalManeuverMode", self._long_maneuver_toggle),
       ("LateralManeuverMode", self._lat_maneuver_toggle),
       ("AlphaLongitudinalEnabled", self._alpha_long_toggle),
+      ("TrackMode", self._track_mode_toggle),
       ("ShowDebugInfo", self._debug_mode_toggle),
     )
     onroad_blocked_toggles = (self._adb_toggle, self._joystick_toggle)
-    release_blocked_toggles = (self._joystick_toggle, self._long_maneuver_toggle, self._lat_maneuver_toggle, self._alpha_long_toggle)
-    engaged_blocked_toggles = (self._long_maneuver_toggle, self._lat_maneuver_toggle, self._alpha_long_toggle)
+    release_blocked_toggles = (self._joystick_toggle, self._long_maneuver_toggle, self._lat_maneuver_toggle, self._alpha_long_toggle, self._track_mode_toggle)
+    engaged_blocked_toggles = (self._long_maneuver_toggle, self._lat_maneuver_toggle, self._alpha_long_toggle, self._track_mode_toggle)
 
     # Hide non-release toggles on release builds
     for item in release_blocked_toggles:
@@ -137,9 +142,11 @@ class DeveloperLayoutMici(NavScroller):
 
       lat_man_enabled = ui_state.is_offroad()
       self._lat_maneuver_toggle.set_enabled(lat_man_enabled)
+      self._track_mode_toggle.set_enabled(lat_man_enabled)
     else:
       self._long_maneuver_toggle.set_enabled(False)
       self._lat_maneuver_toggle.set_enabled(False)
+      self._track_mode_toggle.set_enabled(False)
       self._alpha_long_toggle.set_visible(False)
 
     # Refresh toggles from params to mirror external changes
@@ -152,6 +159,8 @@ class DeveloperLayoutMici(NavScroller):
     self._long_maneuver_toggle.set_checked(False)
     ui_state.params.put_bool("LateralManeuverMode", False)
     self._lat_maneuver_toggle.set_checked(False)
+    ui_state.params.put_bool("TrackMode", False)
+    self._track_mode_toggle.set_checked(False)
 
   def _on_long_maneuver_mode(self, state: bool):
     ui_state.params.put_bool("LongitudinalManeuverMode", state)
@@ -159,6 +168,8 @@ class DeveloperLayoutMici(NavScroller):
     self._joystick_toggle.set_checked(False)
     ui_state.params.put_bool("LateralManeuverMode", False)
     self._lat_maneuver_toggle.set_checked(False)
+    ui_state.params.put_bool("TrackMode", False)
+    self._track_mode_toggle.set_checked(False)
     restart_needed_callback(state)
 
   def _on_lat_maneuver_mode(self, state: bool):
@@ -168,6 +179,20 @@ class DeveloperLayoutMici(NavScroller):
     self._joystick_toggle.set_checked(False)
     ui_state.params.put_bool("LongitudinalManeuverMode", False)
     self._long_maneuver_toggle.set_checked(False)
+    ui_state.params.put_bool("TrackMode", False)
+    self._track_mode_toggle.set_checked(False)
+    restart_needed_callback(state)
+
+  def _on_track_mode(self, state: bool):
+    ui_state.params.put_bool("TrackMode", state)
+    if state:
+      ui_state.params.put_bool("ExperimentalMode", False)
+      ui_state.params.put_bool("JoystickDebugMode", False)
+      self._joystick_toggle.set_checked(False)
+      ui_state.params.put_bool("LongitudinalManeuverMode", False)
+      self._long_maneuver_toggle.set_checked(False)
+      ui_state.params.put_bool("LateralManeuverMode", False)
+      self._lat_maneuver_toggle.set_checked(False)
     restart_needed_callback(state)
 
   def _on_alpha_long_enabled(self, state: bool):

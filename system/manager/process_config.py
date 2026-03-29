@@ -38,13 +38,16 @@ def not_joystick(started: bool, params: Params, CP: car.CarParams) -> bool:
   return started and not params.get_bool("JoystickDebugMode")
 
 def long_maneuver(started: bool, params: Params, CP: car.CarParams) -> bool:
-  return started and params.get_bool("LongitudinalManeuverMode")
+  return started and params.get_bool("LongitudinalManeuverMode") and not track_mode(started, params, CP)
 
 def lat_maneuver(started: bool, params: Params, CP: car.CarParams) -> bool:
-  return started and params.get_bool("LateralManeuverMode")
+  return started and params.get_bool("LateralManeuverMode") and not track_mode(started, params, CP)
+
+def track_mode(started: bool, params: Params, CP: car.CarParams) -> bool:
+  return started and not CP.notCar and params.get_bool("TrackMode")
 
 def not_long_maneuver(started: bool, params: Params, CP: car.CarParams) -> bool:
-  return started and not params.get_bool("LongitudinalManeuverMode")
+  return started and not params.get_bool("LongitudinalManeuverMode") and not track_mode(started, params, CP)
 
 def qcomgps(started: bool, params: Params, CP: car.CarParams) -> bool:
   return started and not ublox_available()
@@ -102,6 +105,7 @@ procs = [
   PythonProcess("ubloxd", "system.ubloxd.ubloxd", ublox, enabled=TICI),
   PythonProcess("pigeond", "system.ubloxd.pigeond", ublox, enabled=TICI),
   PythonProcess("plannerd", "selfdrive.controls.plannerd", not_long_maneuver),
+  PythonProcess("trackd", "selfdrive.trackd.trackd", track_mode),
   PythonProcess("maneuversd", "tools.longitudinal_maneuvers.maneuversd", long_maneuver),
   PythonProcess("lateral_maneuversd", "tools.lateral_maneuvers.lateral_maneuversd", lat_maneuver),
   PythonProcess("radard", "selfdrive.controls.radard", only_onroad),
