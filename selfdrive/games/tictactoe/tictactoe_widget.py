@@ -10,7 +10,7 @@ from openpilot.selfdrive.games.tictactoe.board_renderer import BoardRenderer
 from openpilot.selfdrive.games.tictactoe.game_logic import Board
 from openpilot.system.ui.lib.application import gui_app, FontWeight, MousePos
 
-_GAME_OVER_CLOSE_DELAY = 3.0  # seconds before auto-closing after win/draw/loss
+_GAME_OVER_CLOSE_DELAY = 6.0  # seconds before auto-closing after win/draw/loss
 
 
 class TicTacToeWidget(GameSafetyGuard):
@@ -150,6 +150,10 @@ class TicTacToeWidget(GameSafetyGuard):
     rows = rest.select("games", {"id": f"eq.{game_id}"})
     if rows:
       self._on_remote_update(rows[0])
+    elif not self._winner:
+      # Row was deleted (winner already closed their side) — treat as loss for us
+      opponent = "O" if self._my_mark == "X" else "X"
+      self._on_remote_update({"winner": opponent})
 
   def _send_move(self, board_str: str, next_turn: str, winner: str | None):
     if not self._rest:
