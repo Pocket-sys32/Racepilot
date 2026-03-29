@@ -84,6 +84,7 @@ class MiciHomeLayout(Widget):
   def __init__(self):
     super().__init__()
     self._on_settings_click: Callable | None = None
+    self._on_games_click: Callable | None = None
 
     self._last_refresh = 0
     self._mouse_down_t: None | float = None
@@ -95,12 +96,14 @@ class MiciHomeLayout(Widget):
 
     self._experimental_icon = IconWidget("icons_mici/experimental_mode.png", (48, 48))
     self._mic_icon = IconWidget("icons_mici/microphone.png", (32, 46))
+    self._games_icon = IconWidget("icons_mici/settings/games.png", (48, 48), opacity=0.9)
 
     self._status_bar_layout = HBoxLayout([
       IconWidget("icons_mici/settings.png", (48, 48), opacity=0.9),
       NetworkIcon(),
       self._experimental_icon,
       self._mic_icon,
+      self._games_icon,
     ], spacing=18)
 
     self._race_label = UnifiedLabel("race", font_size=72, font_weight=FontWeight.DISPLAY, max_width=480, wrap_text=False,
@@ -144,12 +147,18 @@ class MiciHomeLayout(Widget):
       self._last_refresh = rl.get_time()
       self._update_params()
 
-  def set_callbacks(self, on_settings: Callable | None = None):
+  def set_callbacks(self, on_settings: Callable | None = None, on_games: Callable | None = None):
     self._on_settings_click = on_settings
+    self._on_games_click = on_games
 
   def _handle_mouse_release(self, mouse_pos: MousePos):
     if not self._did_long_press:
-      if self._on_settings_click:
+      icon_rect = self._games_icon.rect
+      if (self._on_games_click and
+          icon_rect.x <= mouse_pos.x <= icon_rect.x + icon_rect.width and
+          icon_rect.y <= mouse_pos.y <= icon_rect.y + icon_rect.height):
+        self._on_games_click()
+      elif self._on_settings_click:
         self._on_settings_click()
     self._did_long_press = False
 
@@ -171,12 +180,32 @@ class MiciHomeLayout(Widget):
 
     return version, branch, commit[:7], date_str
 
+  def _draw_checkered_flag(self, x: float, y: float, w: float) -> None:
+    sq = 10
+    rows = 2
+    cols = int(w / sq) + 1
+    for row in range(rows):
+      for col in range(cols):
+        if (row + col) % 2 == 0:
+          rx = int(x + col * sq)
+          ry = int(y + row * sq)
+          rw = int(min(sq, x + w - rx))
+          rh = sq
+          if rw > 0:
+            rl.draw_rectangle(rx, ry, rw, rh, rl.Color(255, 255, 255, 180))
+
   def _render(self, _):
     # TODO: why is there extra space here to get it to be flush?
     text_pos = rl.Vector2(self.rect.x - 2 + HOME_PADDING, self.rect.y + 8)
     self._race_label.set_position(text_pos.x, text_pos.y)
     self._race_label.render()
-    self._comma_label.set_position(text_pos.x + self._race_label.text_width, text_pos.y)
+
+    pilot_x = text_pos.x + self._race_label.text_width
+    underline_y = text_pos.y + self._race_label.font_size + 4
+    underline_w = self._comma_label.text_width
+    self._draw_checkered_flag(pilot_x, underline_y, underline_w)
+
+    self._comma_label.set_position(pilot_x, text_pos.y)
     self._comma_label.render()
 
     if self._version_text is not None:

@@ -12,8 +12,8 @@ from openpilot.common.params import Params
 def get_supabase_config() -> tuple[str, str] | None:
   """Read Supabase URL and anon key from params. Returns (url, key) or None."""
   params = Params()
-  url = params.get("SupabaseUrl", encoding="utf-8")
-  key = params.get("SupabaseAnonKey", encoding="utf-8")
+  url = params.get("SupabaseUrl")
+  key = params.get("SupabaseAnonKey")
   if not url or not key:
     return None
   return url.rstrip("/"), key

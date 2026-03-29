@@ -366,7 +366,7 @@ class ModelRenderer(Widget):
           draw_polygon(self._rect, self._path.projected_points, gradient=gradient)
 
     if self._track_active and self._track_path.projected_points.size:
-      color = rl.Color(76, 201, 240, 160) if (self._track_learned_ready and not self._track_exploratory) else rl.Color(255, 183, 77, 140)
+      color = rl.Color(230, 45, 45, 160) if (self._track_learned_ready and not self._track_exploratory) else rl.Color(220, 35, 35, 140)
       draw_polygon(self._rect, self._track_path.projected_points, color)
 
   def _update_track_path(self):

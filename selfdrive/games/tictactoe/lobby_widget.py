@@ -24,7 +24,7 @@ class LobbyWidget(GameSafetyGuard):
   def __init__(self):
     super().__init__()
     self._params = Params()
-    self._dongle_id = self._params.get("DongleId", encoding="utf-8") or "unknown"
+    self._dongle_id = self._params.get("DongleId") or "unknown"
     self._font = gui_app.font(FontWeight.MEDIUM)
     self._font_bold = gui_app.font(FontWeight.BOLD)
 
@@ -37,9 +37,9 @@ class LobbyWidget(GameSafetyGuard):
     self._lock = threading.Lock()
 
     # Buttons
-    self._create_btn = self._child(Button("Create Game", click_callback=self._on_create))
-    self._join_btn = self._child(Button("Join Game", click_callback=self._on_join))
-    self._back_btn = self._child(Button("Back", click_callback=self._on_back, button_style=ButtonStyle.NORMAL))
+    self._create_btn = self._child(Button("Create Game", click_callback=self._on_create, font_size=36))
+    self._join_btn = self._child(Button("Join Game", click_callback=self._on_join, font_size=36))
+    self._back_btn = self._child(Button("Back", click_callback=self._on_back, button_style=ButtonStyle.NORMAL, font_size=30))
 
     # Keyboard for entering lobby code
     self._keyboard = Keyboard(max_text_size=6, min_text_size=6, callback=self._on_keyboard_result)
@@ -62,28 +62,49 @@ class LobbyWidget(GameSafetyGuard):
       self._render_error(rect)
 
   def _render_menu(self, rect: rl.Rectangle):
-    # Title
-    rl.draw_text_ex(self._font_bold, "Tic-Tac-Toe Online",
-                    rl.Vector2(rect.x + 20, rect.y + 30), 50, 0, rl.WHITE)
-    rl.draw_text_ex(self._font, "Play 1v1 with another comma device",
-                    rl.Vector2(rect.x + 20, rect.y + 90), 30, 0, rl.Color(150, 150, 150, 255))
+    h = rect.height
+    pad = rect.x + rect.width * 0.07
+    title_sz = max(20, int(h * 0.14))
+    sub_sz = max(14, int(h * 0.08))
+    btn_h = max(36, int(h * 0.18))
+    gap = max(8, int(h * 0.04))
 
-    btn_w = min(400, rect.width - 40)
+    title_y = rect.y + h * 0.08
+    sub_y = title_y + title_sz + gap
+    btn1_y = sub_y + sub_sz + h * 0.08
+    btn2_y = btn1_y + btn_h + gap
+
+    rl.draw_text_ex(self._font_bold, "Tic-Tac-Toe Online",
+                    rl.Vector2(pad, title_y), title_sz, 0, rl.WHITE)
+    rl.draw_text_ex(self._font, "Play 1v1 with another comma device",
+                    rl.Vector2(pad, sub_y), sub_sz, 0, rl.Color(150, 150, 150, 255))
+
+    btn_w = min(360, rect.width - rect.width * 0.14)
     btn_x = rect.x + (rect.width - btn_w) / 2
-    self._create_btn.render(rl.Rectangle(btn_x, rect.y + 160, btn_w, 80))
-    self._join_btn.render(rl.Rectangle(btn_x, rect.y + 260, btn_w, 80))
+    self._create_btn.render(rl.Rectangle(btn_x, btn1_y, btn_w, btn_h))
+    self._join_btn.render(rl.Rectangle(btn_x, btn2_y, btn_w, btn_h))
 
   def _render_waiting(self, rect: rl.Rectangle):
+    h = rect.height
+    pad = rect.x + rect.width * 0.07
+    title_sz = max(18, int(h * 0.13))
+    sub_sz = max(12, int(h * 0.07))
+    code_sz = max(28, int(h * 0.22))
+    btn_h = max(36, int(h * 0.16))
+    gap = max(6, int(h * 0.04))
+
+    title_y = rect.y + h * 0.08
+    sub_y = title_y + title_sz + gap
+    code_y = sub_y + sub_sz + gap
+    btn_y = code_y + code_sz + gap
+
     rl.draw_text_ex(self._font_bold, "Waiting for opponent...",
-                    rl.Vector2(rect.x + 20, rect.y + 40), 40, 0, rl.WHITE)
-
-    # Show lobby code prominently
+                    rl.Vector2(pad, title_y), title_sz, 0, rl.WHITE)
     rl.draw_text_ex(self._font, "Share this code:",
-                    rl.Vector2(rect.x + 20, rect.y + 110), 30, 0, rl.Color(150, 150, 150, 255))
+                    rl.Vector2(pad, sub_y), sub_sz, 0, rl.Color(150, 150, 150, 255))
     rl.draw_text_ex(self._font_bold, self._lobby_code,
-                    rl.Vector2(rect.x + 20, rect.y + 155), 70, 0, rl.Color(80, 200, 255, 255))
-
-    self._back_btn.render(rl.Rectangle(rect.x + 20, rect.y + rect.height - 100, 150, 60))
+                    rl.Vector2(pad, code_y), code_sz, 0, rl.Color(80, 200, 255, 255))
+    self._back_btn.render(rl.Rectangle(pad, btn_y, max(100, int(rect.width * 0.25)), btn_h))
 
     # Check for opponent join
     with self._lock:
@@ -91,11 +112,22 @@ class LobbyWidget(GameSafetyGuard):
         self._launch_game(self._game_data, "X")
 
   def _render_error(self, rect: rl.Rectangle):
+    h = rect.height
+    pad = rect.x + rect.width * 0.07
+    title_sz = max(18, int(h * 0.13))
+    sub_sz = max(12, int(h * 0.07))
+    btn_h = max(36, int(h * 0.16))
+    gap = max(6, int(h * 0.04))
+
+    title_y = rect.y + h * 0.08
+    msg_y = title_y + title_sz + gap
+    btn_y = msg_y + sub_sz + gap
+
     rl.draw_text_ex(self._font_bold, "Error",
-                    rl.Vector2(rect.x + 20, rect.y + 40), 50, 0, rl.Color(255, 80, 80, 255))
+                    rl.Vector2(pad, title_y), title_sz, 0, rl.Color(255, 80, 80, 255))
     rl.draw_text_ex(self._font, self._error_msg,
-                    rl.Vector2(rect.x + 20, rect.y + 110), 30, 0, rl.Color(200, 200, 200, 255))
-    self._back_btn.render(rl.Rectangle(rect.x + 20, rect.y + 200, 150, 60))
+                    rl.Vector2(pad, msg_y), sub_sz, 0, rl.Color(200, 200, 200, 255))
+    self._back_btn.render(rl.Rectangle(pad, btn_y, max(100, int(rect.width * 0.25)), btn_h))
 
   def _on_create(self):
     config = get_supabase_config()

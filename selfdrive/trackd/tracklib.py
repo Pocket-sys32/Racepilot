@@ -94,6 +94,16 @@ def _resample_closed_path(xs: np.ndarray, ys: np.ndarray, values: np.ndarray | N
   return resampled_x, resampled_y, resampled_values
 
 
+def _clamp_points_to_reference(points: np.ndarray, reference: np.ndarray, max_offset: float) -> np.ndarray:
+  delta = points - reference
+  delta_norm = np.linalg.norm(delta, axis=1)
+  over = delta_norm > max_offset
+  if np.any(over):
+    points = points.copy()
+    points[over] = reference[over] + delta[over] * (max_offset / delta_norm[over])[:, None]
+  return points
+
+
 @dataclass
 class TrackModeConfig:
   track_name: str = "track"
@@ -112,6 +122,10 @@ class TrackModeConfig:
   lookahead_seconds: float = 0.9
   corridor_half_width: float = 3.0
   path_horizon_points: int = 33
+  optimization_iterations: int = 80
+  optimization_smooth_weight: float = 0.22
+  optimization_fidelity_weight: float = 0.08
+  optimization_max_offset: float = 1.0
   min_localization_confidence: float = 0.45
   min_line_confidence: float = 0.35
   enable_learned_execution: bool = True
@@ -149,6 +163,10 @@ class TrackModeConfig:
       lookahead_seconds=float(payload.get("lookahead_seconds", cls.lookahead_seconds)),
       corridor_half_width=float(payload.get("corridor_half_width", cls.corridor_half_width)),
       path_horizon_points=int(payload.get("path_horizon_points", cls.path_horizon_points)),
+      optimization_iterations=int(payload.get("optimization_iterations", cls.optimization_iterations)),
+      optimization_smooth_weight=float(payload.get("optimization_smooth_weight", cls.optimization_smooth_weight)),
+      optimization_fidelity_weight=float(payload.get("optimization_fidelity_weight", cls.optimization_fidelity_weight)),
+      optimization_max_offset=float(payload.get("optimization_max_offset", cls.optimization_max_offset)),
       min_localization_confidence=float(payload.get("min_localization_confidence", cls.min_localization_confidence)),
       min_line_confidence=float(payload.get("min_line_confidence", cls.min_line_confidence)),
       enable_learned_execution=bool(payload.get("enable_learned_execution", cls.enable_learned_execution)),
@@ -253,10 +271,16 @@ def fit_reference_from_lap(points: list[TrackTelemetryPoint], config: TrackModeC
 
   xs = _circular_smooth(xs, config.smoothing_window)
   ys = _circular_smooth(ys, config.smoothing_window)
+  baseline = np.column_stack((xs.astype(np.float64), ys.astype(np.float64)))
+  xs, ys = _optimize_reference_line(xs, ys, config)
 
   if previous is not None and previous.xs.size == xs.size:
     xs = (previous.xs * 0.7 + xs * 0.3).astype(np.float32)
     ys = (previous.ys * 0.7 + ys * 0.3).astype(np.float32)
+    blended = _clamp_points_to_reference(np.column_stack((xs.astype(np.float64), ys.astype(np.float64))), baseline,
+                                         min(config.optimization_max_offset, max(config.corridor_half_width * 0.35, 0.25)))
+    xs = blended[:, 0].astype(np.float32)
+    ys = blended[:, 1].astype(np.float32)
 
   curvature = _compute_curvature(xs, ys)
   closure_error = float(math.hypot(xs[0] - xs[-1], ys[0] - ys[-1]))
@@ -289,6 +313,29 @@ def fit_reference_from_lap(points: list[TrackTelemetryPoint], config: TrackModeC
     line_confidence=confidence,
     source_laps=1 if previous is None else previous.source_laps + 1,
   )
+
+
+def _optimize_reference_line(xs: np.ndarray, ys: np.ndarray, config: TrackModeConfig) -> tuple[np.ndarray, np.ndarray]:
+  if xs.size < 8:
+    return xs.copy(), ys.copy()
+
+  original = np.column_stack((xs.astype(np.float64), ys.astype(np.float64)))
+  current = original.copy()
+  max_offset = min(config.optimization_max_offset, max(config.corridor_half_width * 0.35, 0.25))
+
+  for _ in range(max(config.optimization_iterations, 1)):
+    prev_pts = np.roll(current, 1, axis=0)
+    next_pts = np.roll(current, -1, axis=0)
+    laplacian = 0.5 * (prev_pts + next_pts) - current
+    current += config.optimization_smooth_weight * laplacian
+    current += config.optimization_fidelity_weight * (original - current)
+    current = _clamp_points_to_reference(current, original, max_offset)
+
+  optimized_x = _circular_smooth(current[:, 0].astype(np.float32), max(5, config.smoothing_window // 2))
+  optimized_y = _circular_smooth(current[:, 1].astype(np.float32), max(5, config.smoothing_window // 2))
+  optimized = np.column_stack((optimized_x.astype(np.float64), optimized_y.astype(np.float64)))
+  optimized = _clamp_points_to_reference(optimized, original, max_offset)
+  return optimized[:, 0].astype(np.float32), optimized[:, 1].astype(np.float32)
 
 
 class TrackSession:

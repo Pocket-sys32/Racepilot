@@ -272,9 +272,9 @@ class HudRenderer(Widget):
 
     label = tr("TRACK MODE")
     exploratory = sm["trackState"].exploratory
-    bg = rl.Color(255, 183, 77, 55) if exploratory else rl.Color(76, 201, 240, 55)
-    border = rl.Color(255, 183, 77, 180) if exploratory else rl.Color(76, 201, 240, 180)
-    text = rl.Color(255, 220, 170, 255) if exploratory else rl.Color(180, 236, 255, 255)
+    bg = rl.Color(255, 183, 77, 55) if exploratory else rl.Color(0, 255, 255, 40)
+    border = rl.Color(255, 183, 77, 180) if exploratory else rl.Color(0, 255, 255, 200)
+    text = rl.Color(255, 220, 170, 255) if exploratory else rl.Color(0, 255, 255, 255)
 
     text_size = measure_text_cached(self._font_semi_bold, label, FONT_SIZES.track_mode)
     width = text_size.x + 60

@@ -65,7 +65,7 @@ class TicTacToeWidget(GameSafetyGuard):
         # Track wins
         if self._winner == self._my_mark:
           params = Params()
-          wins = int(params.get("TicTacToeWins", encoding="utf-8") or "0")
+          wins = int(params.get("TicTacToeWins") or "0")
           params.put("TicTacToeWins", str(wins + 1))
 
   def _render(self, rect: rl.Rectangle):
