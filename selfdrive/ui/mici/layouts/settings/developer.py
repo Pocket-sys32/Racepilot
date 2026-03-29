@@ -93,7 +93,7 @@ class DeveloperLayoutMici(NavScroller):
     )
     onroad_blocked_toggles = (self._adb_toggle, self._joystick_toggle)
     release_blocked_toggles = (self._joystick_toggle, self._long_maneuver_toggle, self._lat_maneuver_toggle, self._alpha_long_toggle)
-    engaged_blocked_toggles = (self._long_maneuver_toggle, self._lat_maneuver_toggle, self._alpha_long_toggle, self._track_mode_toggle)
+    engaged_blocked_toggles = (self._long_maneuver_toggle, self._lat_maneuver_toggle, self._alpha_long_toggle)
 
     # Hide non-release toggles on release builds
     for item in release_blocked_toggles:
@@ -142,11 +142,11 @@ class DeveloperLayoutMici(NavScroller):
 
       lat_man_enabled = ui_state.is_offroad()
       self._lat_maneuver_toggle.set_enabled(lat_man_enabled)
-      self._track_mode_toggle.set_enabled(lat_man_enabled)
+      self._track_mode_toggle.set_enabled(ui_state.is_offroad())
     else:
       self._long_maneuver_toggle.set_enabled(False)
       self._lat_maneuver_toggle.set_enabled(False)
-      self._track_mode_toggle.set_enabled(False)
+      self._track_mode_toggle.set_enabled(ui_state.is_offroad())
       self._alpha_long_toggle.set_visible(False)
 
     # Refresh toggles from params to mirror external changes
