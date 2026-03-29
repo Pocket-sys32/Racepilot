@@ -78,14 +78,16 @@ class BoardRenderer:
                    current_turn: str, my_mark: str, winner: str | None) -> None:
     y = rect.y + 15
     if winner:
+      forfeit = winner.endswith('F')
+      winning_mark = winner[0] if forfeit else winner
       if winner == 'D':
         text = "Draw!"
         color = DIM_TEXT
-      elif winner == my_mark:
-        text = "You Win!"
+      elif winning_mark == my_mark:
+        text = "Opponent Forfeited — You Win!" if forfeit else "You Win!"
         color = rl.Color(0, 255, 100, 255)
       else:
-        text = "You Lose!"
+        text = "You Forfeited" if forfeit else "You Lose!"
         color = rl.Color(255, 80, 80, 255)
     elif current_turn == my_mark:
       text = "Your turn"

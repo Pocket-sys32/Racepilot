@@ -30,6 +30,7 @@ class TicTacToeWidget(GameSafetyGuard):
     self._pending_update: dict | None = None
 
     self._game_over_at: float | None = None
+    self._safe_close = False  # True when closed by safety guard (no forfeit)
 
     # Set up Supabase client
     config = get_supabase_config()
@@ -43,7 +44,20 @@ class TicTacToeWidget(GameSafetyGuard):
     if self._listener:
       self._listener.start()
 
+  def _safety_dismiss(self, reason: str):
+    self._safe_close = True
+    super()._safety_dismiss(reason)
+
   def hide_event(self):
+    # Forfeit if the game is still in progress and this was a manual close
+    if self._winner is None and not self._safe_close and self._rest:
+      opponent = "O" if self._my_mark == "X" else "X"
+      forfeit_winner = opponent + "F"  # e.g. "XF" = X wins because O forfeited
+      rest, game_id = self._rest, self._game_id
+      threading.Thread(
+        target=lambda: rest.update("games", {"id": game_id}, {"winner": forfeit_winner}),
+        daemon=True,
+      ).start()
     if self._listener:
       self._listener.stop()
       self._listener = None
@@ -71,7 +85,7 @@ class TicTacToeWidget(GameSafetyGuard):
         if new_winner and not self._winner:
           self._winner = new_winner
           self._game_over_at = time.monotonic()
-          if self._winner == self._my_mark:
+          if self._winner.startswith(self._my_mark):
             params = Params()
             wins = int(params.get("TicTacToeWins") or "0")
             params.put("TicTacToeWins", str(wins + 1))
@@ -111,7 +125,7 @@ class TicTacToeWidget(GameSafetyGuard):
       if new_winner and not self._winner:
         self._winner = new_winner
         self._game_over_at = time.monotonic()
-        if self._winner == self._my_mark:
+        if self._winner.startswith(self._my_mark):
           params = Params()
           wins = int(params.get("TicTacToeWins") or "0")
           params.put("TicTacToeWins", str(wins + 1))
