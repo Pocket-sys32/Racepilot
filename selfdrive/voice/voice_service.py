@@ -86,9 +86,7 @@ if _AIORTC_OK:
       """48 kHz float32 samples directly — no resampling needed."""
       if not self.active:
         return
-      # Pre-gain: boost mic level before Opus encoding so codec allocates more bits
-      boosted = np.clip(pcm_f32 * 6.0, -1.0, 1.0)
-      self._enqueue(boosted)
+      self._enqueue(pcm_f32)
 
     def _enqueue(self, pcm48: np.ndarray) -> None:
       try:
@@ -218,13 +216,14 @@ class VoiceService:
         self._out_stream.start()
         self._out_ok = True
         cloudlog.info(f"voice: output stream opened (device={self._out_stream.device})")
-        # ALSA 'Playback 0 Volume' resets to 0 on boot unless soundd (car-only) runs
+        # ALSA 'Playback 0 Volume' resets to 0 on boot unless soundd (car-only) runs.
+        # Use 50% (4096/8192) — max causes distortion at the speaker stage.
         try:
           subprocess.run(
-            ["amixer", "-c", "0", "cset", "name=Playback 0 Volume", "8192"],
+            ["amixer", "-c", "0", "cset", "name=Playback 0 Volume", "4096"],
             capture_output=True, timeout=3,
           )
-          cloudlog.info("voice: set ALSA Playback 0 Volume to 8192")
+          cloudlog.info("voice: set ALSA Playback 0 Volume to 4096 (50%)")
         except Exception as ve:
           cloudlog.warning(f"voice: amixer volume set failed: {ve}")
         return
@@ -326,7 +325,6 @@ class VoiceService:
         while True:
           frame = await track.recv()
           pcm = frame.to_ndarray().flatten().astype(np.float32) / 32768.0
-          pcm = np.clip(pcm * 4.0, -1.0, 1.0)  # 4× gain — mic input is quiet
           if self._out_ok:
             self._out_buf.extend(pcm.tolist())
       except Exception:
