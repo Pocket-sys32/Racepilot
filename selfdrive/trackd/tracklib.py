@@ -183,7 +183,7 @@ class TrackModeConfig:
 
   @property
   def storage_path(self) -> Path:
-    root = Path(Paths.persist_root()) / "track_mode"
+    root = Path("/data/media/0/track_mode")
     root.mkdir(parents=True, exist_ok=True)
     return root / f"{_safe_track_name(self.track_name)}.json"
 

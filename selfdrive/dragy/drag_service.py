@@ -155,7 +155,7 @@ class DragService:
     self._samples: list = []   # (t, v_fused, a_can, distance)
     self._gps_correction: float = 1.0
 
-    self._persist_dir = Path(Paths.persist_root()) / "drag_runs"
+    self._persist_dir = Path("/data/media/0/drag_runs")
     self._persist_dir.mkdir(parents=True, exist_ok=True)
     self._load_runs()
 

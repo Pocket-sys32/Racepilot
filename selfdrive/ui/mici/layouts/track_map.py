@@ -52,7 +52,7 @@ class TrackMapLayout(NavWidget):
     self._load()
 
   def _load(self):
-    track_dir = Path(Paths.persist_root()) / "track_mode"
+    track_dir = Path("/data/media/0/track_mode")
     if not track_dir.exists():
       self._reference = None
       self._error = "No track data saved yet.\nComplete a lap with track mode active."

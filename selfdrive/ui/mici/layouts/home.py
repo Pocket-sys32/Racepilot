@@ -99,7 +99,7 @@ class TrackIconWidget(Widget):
     now = time.monotonic()
     if now - self._last_check > 10.0:
       self._last_check = now
-      track_dir = Path(Paths.persist_root()) / "track_mode"
+      track_dir = Path("/data/media/0/track_mode")
       self._has_data = track_dir.exists() and any(track_dir.glob("*.json"))
 
   def _render(self, _) -> None:
